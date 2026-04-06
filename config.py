@@ -31,6 +31,7 @@ USER_COL_DEPARTMENT = "Department"
 KPI_COL_CODE = "KPI Code"
 KPI_COL_NAME = "KPI Name"
 KPI_COL_DEPARTMENT = "Department"
+KPI_COL_MONTH = "Month"
 KPI_COL_TARGET = "Target"
 KPI_COL_GREEN = "Green Threshold"
 KPI_COL_AMBER = "Amber Threshold"
@@ -43,6 +44,6 @@ ACTUAL_COL_ACTUAL = "Actual"
 ACTUAL_COL_COMMENT = "Comment"
 ACTUAL_COL_UPDATED_BY = "Updated By"
 
-# OpenAI
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_MODEL = "gpt-4o"
+# Gemini
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = "gemini-1.5-flash"

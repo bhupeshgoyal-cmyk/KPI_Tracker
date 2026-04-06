@@ -23,19 +23,34 @@ with st.sidebar:
     st.caption(user["email"])
     st.caption(f"Department: **{department}**")
     st.divider()
+
+    # Month selector — defaults to current month
+    today         = date.today()
+    current_month = today.strftime("%Y-%m")
+    months        = [
+        (date(today.year, m, 1)).strftime("%Y-%m")
+        for m in range(1, 13)
+    ]
+    selected_month = st.selectbox(
+        "Month",
+        options=months,
+        index=months.index(current_month),
+    )
+
+    st.divider()
     if st.button("Sign out", use_container_width=True):
         logout()
 
 try:
-    kpis_df    = load_kpis(department)
-    actuals_df = load_actuals(department)
+    kpis_df    = load_kpis(department, selected_month)
+    actuals_df = load_actuals(department, selected_month)
     enriched   = enrich_with_rag(kpis_df, actuals_df)
 except Exception as e:
     st.error(f"Could not load data from Google Sheets: {e}")
     st.stop()
 
 if kpis_df.empty:
-    st.warning(f"No KPIs found for **{department}**. Check the KPI Registry sheet.")
+    st.warning(f"No KPIs found for **{department}** in **{selected_month}**. Check the KPI Registry sheet.")
     st.stop()
 
 # =============================================================================
@@ -93,7 +108,7 @@ def _render_insight(text: str) -> None:
 # 1. Welcome
 # =============================================================================
 st.title("📊 KPI Dashboard")
-st.markdown(f"**{department}** · Week of {date.today().strftime('%d %b %Y')}")
+st.markdown(f"**{department}** · {selected_month}")
 st.divider()
 
 # =============================================================================

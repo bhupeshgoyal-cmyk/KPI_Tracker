@@ -1,15 +1,19 @@
 import pandas as pd
-from openai import OpenAI
+import google.generativeai as genai
 import config
 
-_client = OpenAI(api_key=config.OPENAI_API_KEY)
+genai.configure(api_key=config.GEMINI_API_KEY)
+_model = genai.GenerativeModel(
+    model_name=config.GEMINI_MODEL,
+    generation_config={"temperature": 0.4, "max_output_tokens": 600},
+)
 
 # ---------------------------------------------------------------------------
 # Prompt builder
 # ---------------------------------------------------------------------------
 
 def _build_kpi_block(df: pd.DataFrame) -> str:
-    """Render the KPI data as a compact text table for the prompt."""
+    """Render the KPI data as a compact text block for the prompt."""
     lines = []
     for _, row in df.iterrows():
         actual  = row.get("Latest Actual")
@@ -60,8 +64,9 @@ Output format — three sections, each a short paragraph, no headers or bullets:
 """
 
 
-def _build_user_prompt(department: str, kpi_block: str) -> str:
+def _build_full_prompt(department: str, kpi_block: str) -> str:
     return (
+        f"{_SYSTEM_PROMPT}\n\n"
         f"Department: {department}\n\n"
         f"KPI Performance this week:\n{kpi_block}\n\n"
         "Provide your executive assessment."
@@ -76,17 +81,8 @@ def generate_insights(department: str, enriched_df: pd.DataFrame) -> str:
     """
     Generate an executive AI insight narrative for a department's KPI data.
 
-    Parameters
-    ----------
-    department   : Department name (used for context in the prompt).
-    enriched_df  : DataFrame from enrich_with_rag(), must contain columns:
-                   KPI Name, Target, Latest Actual, RAG Status,
-                   and optionally ACTUAL_COL_COMMENT.
-
-    Returns
-    -------
-    str  Plain-text insight with three sections: SITUATION, SCRUTINY, ACTION.
-         Returns an error string (never raises) so the UI can display it safely.
+    Returns a plain-text string with SITUATION / SCRUTINY / ACTION sections.
+    Never raises — returns an error string so the UI can display it safely.
     """
     if enriched_df.empty:
         return "No KPI data available for this department."
@@ -94,16 +90,7 @@ def generate_insights(department: str, enriched_df: pd.DataFrame) -> str:
     kpi_block = _build_kpi_block(enriched_df)
 
     try:
-        response = _client.chat.completions.create(
-            model=config.OPENAI_MODEL,
-            messages=[
-                {"role": "system",  "content": _SYSTEM_PROMPT},
-                {"role": "user",    "content": _build_user_prompt(department, kpi_block)},
-            ],
-            temperature=0.4,
-            max_tokens=600,
-        )
-        return response.choices[0].message.content.strip()
-
+        response = _model.generate_content(_build_full_prompt(department, kpi_block))
+        return response.text.strip()
     except Exception as e:
         return f"Could not generate insights: {e}"

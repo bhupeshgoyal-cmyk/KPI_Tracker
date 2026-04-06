@@ -46,19 +46,22 @@ def _sheet_to_df(tab_name: str) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 @st.cache_data(ttl=300, show_spinner="Loading KPIs…")
-def load_kpis(department: str) -> pd.DataFrame:
+def load_kpis(department: str, month: str) -> pd.DataFrame:
     """
-    Return KPIs for a given department with RAG status column added.
+    Return KPIs for a given department and month (format: YYYY-MM).
     Results are cached for 5 minutes.
     """
     df = _sheet_to_df(config.KPI_REGISTRY_TAB)
 
-    # Normalise column types
     for col in [config.KPI_COL_TARGET, config.KPI_COL_GREEN,
                 config.KPI_COL_AMBER, config.KPI_COL_RED]:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    return df[df[config.KPI_COL_DEPARTMENT] == department].reset_index(drop=True)
+    mask = (
+        (df[config.KPI_COL_DEPARTMENT] == department) &
+        (df[config.KPI_COL_MONTH].astype(str) == month)
+    )
+    return df[mask].reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------------
@@ -66,13 +69,20 @@ def load_kpis(department: str) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 @st.cache_data(ttl=60, show_spinner="Loading actuals…")
-def load_actuals(department: str) -> pd.DataFrame:
+def load_actuals(department: str, month: str) -> pd.DataFrame:
     """
-    Return all actuals for KPIs belonging to the given department.
+    Return all actuals for KPIs belonging to the given department and month.
     Results are cached for 60 seconds.
     """
     actuals_df = _sheet_to_df(config.ACTUALS_TAB)
-    kpis_df = load_kpis(department)
+    kpis_df = load_kpis(department, month)
+
+    if actuals_df.empty or config.ACTUAL_COL_KPI_CODE not in actuals_df.columns:
+        return pd.DataFrame(columns=[
+            config.ACTUAL_COL_DATE, config.ACTUAL_COL_KPI_CODE,
+            config.ACTUAL_COL_ACTUAL, config.ACTUAL_COL_COMMENT,
+            config.ACTUAL_COL_UPDATED_BY,
+        ])
 
     dept_kpi_codes = kpis_df[config.KPI_COL_CODE].tolist()
 
@@ -107,6 +117,7 @@ def append_actual(
         value_input_option="USER_ENTERED",
     )
     load_actuals.clear()
+    load_kpis.clear()
 
 
 # ---------------------------------------------------------------------------

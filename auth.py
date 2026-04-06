@@ -5,10 +5,11 @@ import streamlit as st
 # Replace or extend this once data_loader.py is wired to the Users sheet.
 # ---------------------------------------------------------------------------
 USERS = [
-    {"email": "alice@company.com",   "name": "Alice",   "department": "Finance"},
-    {"email": "bob@company.com",     "name": "Bob",     "department": "Operations"},
-    {"email": "carol@company.com",   "name": "Carol",   "department": "HR"},
-    {"email": "david@company.com",   "name": "David",   "department": "Technology"},
+    {"email": "bhupesh.goyal@stashfin.com", "name": "Bhupesh", "department": "Strategy"},
+    {"email": "alice@company.com",          "name": "Alice",   "department": "Finance"},
+    {"email": "bob@company.com",            "name": "Bob",     "department": "Operations"},
+    {"email": "carol@company.com",          "name": "Carol",   "department": "HR"},
+    {"email": "david@company.com",          "name": "David",   "department": "Technology"},
 ]
 
 _USER_LOOKUP = {u["email"].lower(): u for u in USERS}
