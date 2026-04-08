@@ -329,12 +329,11 @@ with st.form("actuals_form", clear_on_submit=True):
         min_value=0.0,
         step=_actual_step,
         format=_actual_format,
+        help=f"Target: {_target_fmt}" if _is_percent else None,
     )
     if _actual_max is not None:
         _input_kwargs["max_value"] = _actual_max
     actual_value = st.number_input(**_input_kwargs)
-    if _is_percent:
-        st.caption(f"Target: {_target_fmt}")
     comment      = st.text_area(
         "Comment",
         placeholder="Briefly explain the result — what drove it, any context…",
