@@ -192,27 +192,34 @@ def append_actual(date: str, kpi_code: str, actual: float,
 # RAG status
 # =============================================================================
 
-def compute_rag(actual, target, green, amber) -> str:
+def compute_rag(actual, target, green, amber, red) -> str:
     """
-    Higher-is-better convention: actual >= green → Green, >= amber → Amber, else Red.
-    Normalizes percentage values: if green threshold > 1, treats it as percentage (0-100)
+    Higher-is-better convention: actual >= green → Green, >= amber → Amber, >= red → Red, else Unknown.
+    Normalizes percentage values: if thresholds > 1, treats them as percentage (0-100)
     and converts to decimal (0-1) to match actual values stored as decimals.
     """
     try:
-        if pd.isna(actual) or pd.isna(green) or pd.isna(amber):
+        if pd.isna(actual):
             return "Unknown"
         
-        # If green/amber thresholds are > 1, assume they're percentages (0-100)
+        # Normalize thresholds: if any threshold > 1, assume it's a percentage (0-100)
         # and convert to decimal (0-1) to match actual values
         if pd.notna(green) and green > 1:
             green = green / 100.0
         if pd.notna(amber) and amber > 1:
             amber = amber / 100.0
+        if pd.notna(red) and red > 1:
+            red = red / 100.0
         
-        if actual >= green:
+        # Check thresholds in order: Green > Amber > Red
+        if pd.notna(green) and actual >= green:
             return "Green"
-        if actual >= amber:
+        if pd.notna(amber) and actual >= amber:
             return "Amber"
+        if pd.notna(red) and actual >= red:
+            return "Red"
+        
+        # If no thresholds match, assume it's below all thresholds (worst case)
         return "Red"
     except Exception:
         return "Unknown"
@@ -261,8 +268,9 @@ def enrich_with_rag(kpis_df: pd.DataFrame, actuals_df: pd.DataFrame) -> pd.DataF
         lambda row: compute_rag(
             row.get("Latest Actual"),
             row.get(config.KPI_COL_TARGET),
-            row.get(config.KPI_COL_GREEN, 0),
-            row.get(config.KPI_COL_AMBER, 0),
+            row.get(config.KPI_COL_GREEN),
+            row.get(config.KPI_COL_AMBER),
+            row.get(config.KPI_COL_RED),
         ),
         axis=1,
     )
