@@ -283,12 +283,14 @@ _convert_pct = False   # whether to divide input by 100 before saving
 if _is_percent:
     try:
         _t = float(_kpi_target)
-        # Decimal storage (0–1): target=0.95 → shown as "95%"
-        _pct_decimal = _t <= 1.0
+        # Check if target is decimal (0-1 range) OR if green threshold is decimal (0-2 range)
+        # This handles both cases: target=0.95 or target=100 with green=1.05
+        _green = _sel_kpi_row[config.KPI_COL_GREEN].iloc[0] if not _sel_kpi_row.empty else None
+        _pct_decimal = (_t <= 1.0) or (pd.notna(_green) and _green <= 10)
     except (TypeError, ValueError):
         _pct_decimal = False
     if _pct_decimal:
-        # Accept human-friendly percent input (e.g. 95), convert on save
+        # Accept human-friendly percent input (e.g. 94 or 95), convert on save
         _actual_label  = "Actual value (%)"
         _actual_step   = 0.1
         _actual_format = "%.1f"
