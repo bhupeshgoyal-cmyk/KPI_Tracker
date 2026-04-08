@@ -178,6 +178,37 @@ with st.expander("🔍 Debug info", expanded=False):
         st.warning("No actuals found for this month. Submit data using the form below.")
 
 # =============================================================================
+# MTD formatting helpers
+# =============================================================================
+
+def _fmt_mtd_progress(actual, target_fmt):
+    """Format MTD Progress to match target format."""
+    if pd.isna(actual):
+        return "—"
+    # If target is percentage format, show as percentage
+    if target_fmt and isinstance(target_fmt, str) and target_fmt.endswith("%"):
+        # If actual is < 10, assume decimal format (0.94), convert to percentage
+        if actual < 10:
+            return f"{actual*100:.1f}%"
+        else:
+            return f"{actual:.1f}%"
+    else:
+        return f"{actual:.2f}"
+
+def _fmt_gap(gap, target_fmt):
+    """Format gap to match target format."""
+    if pd.isna(gap):
+        return "—"
+    # If target is percentage format, show gap as percentage
+    if target_fmt and isinstance(target_fmt, str) and target_fmt.endswith("%"):
+        if abs(gap) < 10:
+            return f"{gap*100:+.1f}%"
+        else:
+            return f"{gap:+.1f}%"
+    else:
+        return f"{gap:+.2f}"
+
+# =============================================================================
 # Section 1: MTD Progress — Weekly Tracked KPIs
 # =============================================================================
 st.subheader("📈 MTD Progress — Weekly Tracked KPIs")
@@ -205,21 +236,13 @@ else:
     
     # Format MTD Progress to match target format
     mtd_display["MTD Progress"] = mtd_display.apply(
-        lambda row: _fmt_actual(row) if not pd.isna(row.get("MTD Progress")) else "—",
+        lambda row: _fmt_mtd_progress(row.get("MTD Progress"), row.get(config.KPI_COL_TARGET)),
         axis=1
     )
     
     # Format Gap to Target to match target format
     mtd_display["Gap to Target"] = mtd_display.apply(
-        lambda row: (
-            f"{row.get('Gap to Target')*100:.1f}%" if (
-                isinstance(row.get(config.KPI_COL_TARGET), str) and 
-                row.get(config.KPI_COL_TARGET, "").endswith("%") and 
-                pd.notna(row.get("Gap to Target")) and 
-                abs(row.get("Gap to Target")) < 10
-            )
-            else f"{row.get('Gap to Target'):+.2f}" if pd.notna(row.get("Gap to Target")) else "—"
-        ),
+        lambda row: _fmt_gap(row.get("Gap to Target"), row.get(config.KPI_COL_TARGET)),
         axis=1
     )
     
