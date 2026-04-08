@@ -37,13 +37,18 @@ with st.sidebar:
         st.warning("No months found in KPI Registry.")
         selected_month = ""
     else:
-        # Default to current month if present, otherwise latest
+        # Default to current month if present, otherwise the latest month <= today
         current_month_str = date.today().strftime("%b-%Y")
-        default_idx = (
-            available_months.index(current_month_str)
-            if current_month_str in available_months
-            else len(available_months) - 1
-        )
+        if current_month_str in available_months:
+            default_idx = available_months.index(current_month_str)
+        else:
+            today_ts = pd.Timestamp(date.today())
+            past = [
+                (i, parse_month(m))
+                for i, m in enumerate(available_months)
+                if pd.notna(parse_month(m)) and parse_month(m) <= today_ts
+            ]
+            default_idx = past[-1][0] if past else 0
         selected_month = st.selectbox(
             "Month",
             options=available_months,
@@ -84,12 +89,16 @@ def _fmt(value, fallback="—", decimals=2):
         return fallback
 
 def _fmt_target(value, fallback="—"):
-    """Format a target value as a percentage string, e.g. 100 → '100%'."""
+    """Format a target value as a percentage string.
+    Values ≤ 1 are treated as decimals: 1.0 → '100%', 0.95 → '95%'.
+    Values > 1 are treated as already the percentage number: 95 → '95%', 100 → '100%'.
+    """
     try:
         v = float(value)
         if pd.isna(v):
             return fallback
-        return f"{int(v)}%" if v == int(v) else f"{v:.1f}%"
+        pct = v * 100 if v <= 1.0 else v
+        return f"{int(pct)}%" if pct == int(pct) else f"{pct:.1f}%"
     except (TypeError, ValueError):
         return fallback
 
@@ -250,6 +259,38 @@ kpi_options = {
 selected_label = st.selectbox("Select KPI", options=list(kpi_options.keys()))
 selected_code  = kpi_options[selected_label]
 
+# Determine input format from the selected KPI's target
+_sel_kpi_row = kpis_df[kpis_df[config.KPI_COL_CODE] == selected_code]
+_kpi_target  = _sel_kpi_row[config.KPI_COL_TARGET].iloc[0] if not _sel_kpi_row.empty else None
+_target_fmt  = _fmt_target(_kpi_target)          # e.g. "95%" or "—"
+_is_percent  = _target_fmt.endswith("%")
+
+_convert_pct = False   # whether to divide input by 100 before saving
+if _is_percent:
+    try:
+        _t = float(_kpi_target)
+        # Decimal storage (0–1): target=0.95 → shown as "95%"
+        _pct_decimal = _t <= 1.0
+    except (TypeError, ValueError):
+        _pct_decimal = False
+    if _pct_decimal:
+        # Accept human-friendly percent input (e.g. 95), convert on save
+        _actual_label  = "Actual value (%)"
+        _actual_step   = 0.1
+        _actual_format = "%.1f"
+        _actual_max    = 100.0
+        _convert_pct   = True
+    else:
+        _actual_label  = "Actual value (%)"
+        _actual_step   = 0.1
+        _actual_format = "%.1f"
+        _actual_max    = None
+else:
+    _actual_label  = "Actual value"
+    _actual_step   = 0.01
+    _actual_format = "%.2f"
+    _actual_max    = None
+
 # Show last submission for selected KPI
 kpi_history = (
     actuals_df[actuals_df[config.ACTUAL_COL_KPI_CODE] == selected_code]
@@ -269,7 +310,17 @@ else:
     st.info("No previous submission for this KPI this month.")
 
 with st.form("actuals_form", clear_on_submit=True):
-    actual_value = st.number_input("Actual value", min_value=0.0, step=0.01, format="%.2f")
+    _input_kwargs = dict(
+        label=_actual_label,
+        min_value=0.0,
+        step=_actual_step,
+        format=_actual_format,
+    )
+    if _actual_max is not None:
+        _input_kwargs["max_value"] = _actual_max
+    actual_value = st.number_input(**_input_kwargs)
+    if _is_percent:
+        st.caption(f"Target: {_target_fmt}")
     comment      = st.text_area(
         "Comment",
         placeholder="Briefly explain the result — what drove it, any context…",
@@ -282,14 +333,16 @@ with st.form("actuals_form", clear_on_submit=True):
 
 if submitted:
     try:
+        save_value = actual_value / 100.0 if _convert_pct else actual_value
         append_actual(
             date=date.today().strftime("%Y-%m-%d"),
             kpi_code=selected_code,
-            actual=actual_value,
+            actual=save_value,
             comment=comment.strip(),
             updated_by=user["email"],
         )
-        st.success(f"Saved! {selected_label} → {actual_value:.2f} on {date.today().strftime('%d %b %Y')}")
+        display_value = f"{actual_value:.1f}%" if _is_percent else f"{actual_value:.2f}"
+        st.success(f"Saved! {selected_label} → {display_value} on {date.today().strftime('%d %b %Y')}")
         st.rerun()
     except Exception as e:
         st.error(f"Failed to save: {e}")
