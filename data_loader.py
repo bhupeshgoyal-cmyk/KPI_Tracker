@@ -193,10 +193,22 @@ def append_actual(date: str, kpi_code: str, actual: float,
 # =============================================================================
 
 def compute_rag(actual, target, green, amber) -> str:
-    """Higher-is-better convention: actual >= green → Green, >= amber → Amber, else Red."""
+    """
+    Higher-is-better convention: actual >= green → Green, >= amber → Amber, else Red.
+    Normalizes percentage values: if green threshold > 1, treats it as percentage (0-100)
+    and converts to decimal (0-1) to match actual values stored as decimals.
+    """
     try:
         if pd.isna(actual) or pd.isna(green) or pd.isna(amber):
             return "Unknown"
+        
+        # If green/amber thresholds are > 1, assume they're percentages (0-100)
+        # and convert to decimal (0-1) to match actual values
+        if pd.notna(green) and green > 1:
+            green = green / 100.0
+        if pd.notna(amber) and amber > 1:
+            amber = amber / 100.0
+        
         if actual >= green:
             return "Green"
         if actual >= amber:
