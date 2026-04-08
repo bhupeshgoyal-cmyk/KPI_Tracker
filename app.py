@@ -243,6 +243,29 @@ all_kpis_display = enriched[[
 ]].copy()
 
 all_kpis_display[config.KPI_COL_TARGET] = all_kpis_display[config.KPI_COL_TARGET].apply(_fmt_target)
+
+# Format Latest Actual to match target format (show as percentage if target is percentage)
+def _fmt_actual(row):
+    """Format actual value to match target format."""
+    actual = row.get("Latest Actual")
+    target = row.get(config.KPI_COL_TARGET)  # This is already formatted (e.g., "95%")
+    
+    if pd.isna(actual):
+        return "—"
+    
+    # If target ends with %, format actual as percentage
+    if target and isinstance(target, str) and target.endswith("%"):
+        # If actual is < 10, it's likely a decimal (0.94), convert to percentage
+        if actual < 10:
+            return f"{actual*100:.1f}%"
+        else:
+            # Already in percentage format (94), just add %
+            return f"{actual:.1f}%"
+    else:
+        # Regular numeric format
+        return f"{actual:.2f}"
+
+all_kpis_display["Latest Actual"] = all_kpis_display.apply(_fmt_actual, axis=1)
 all_kpis_display = all_kpis_display.rename(columns={
     config.KPI_COL_CODE:        "Code",
     config.KPI_COL_NAME:        "KPI Name",
@@ -254,9 +277,6 @@ st.dataframe(
     all_kpis_display,
     use_container_width=True,
     hide_index=True,
-    column_config={
-        "Latest Actual": st.column_config.NumberColumn(format="%.2f"),
-    },
 )
 
 st.divider()
@@ -326,12 +346,17 @@ else:
     st.info("No previous submission for this KPI this month.")
 
 with st.form("actuals_form", clear_on_submit=True):
+    # Build help text with instructions
+    _help_text = None
+    if _is_percent:
+        _help_text = f"Enter the value as a percentage (0-100). Example: enter 94 for 94%. Target: {_target_fmt}"
+    
     _input_kwargs = dict(
         label=_actual_label,
         min_value=0.0,
         step=_actual_step,
         format=_actual_format,
-        help=f"Target: {_target_fmt}" if _is_percent else None,
+        help=_help_text,
     )
     if _actual_max is not None:
         _input_kwargs["max_value"] = _actual_max
