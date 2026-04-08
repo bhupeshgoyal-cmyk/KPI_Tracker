@@ -195,20 +195,21 @@ def append_actual(date: str, kpi_code: str, actual: float,
 def compute_rag(actual, target, green, amber, red) -> str:
     """
     Higher-is-better convention: actual >= green → Green, >= amber → Amber, >= red → Red, else Unknown.
-    Normalizes percentage values: if thresholds > 1, treats them as percentage (0-100)
-    and converts to decimal (0-1) to match actual values stored as decimals.
+    Handles both decimal (0-1) and percentage (0-100) formats for thresholds.
+    Percentage thresholds (typically > 10) are divided by 100 to match decimal actuals.
     """
     try:
         if pd.isna(actual):
             return "Unknown"
         
-        # Normalize thresholds: if any threshold > 1, assume it's a percentage (0-100)
-        # and convert to decimal (0-1) to match actual values
-        if pd.notna(green) and green > 1:
+        # Normalize thresholds: if any threshold > 10, treat it as a percentage (e.g., 95)
+        # and convert to decimal (0-1) to match actual values stored as decimals.
+        # Values <= 10 are assumed to be already in decimal format (e.g., 0.95, 1.05)
+        if pd.notna(green) and green > 10:
             green = green / 100.0
-        if pd.notna(amber) and amber > 1:
+        if pd.notna(amber) and amber > 10:
             amber = amber / 100.0
-        if pd.notna(red) and red > 1:
+        if pd.notna(red) and red > 10:
             red = red / 100.0
         
         # Check thresholds in order: Green > Amber > Red
