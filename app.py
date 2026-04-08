@@ -39,14 +39,22 @@ with st.sidebar:
     else:
         # Default to current month if present, otherwise the latest month <= today
         today = date.today()
-        current_month_str = today.strftime("%b-%Y")
         today_ts = pd.Timestamp(today)
         
+        # Try multiple formats for current month
+        current_month_candidates = [
+            today.strftime("%b-%Y"),  # Apr-2026
+            today.strftime("%Y-%m"),  # 2026-04
+        ]
+        
         default_idx = 0
-        if current_month_str in available_months:
-            default_idx = available_months.index(current_month_str)
+        # Check if current month is in available_months (try multiple formats)
+        for candidate in current_month_candidates:
+            if candidate in available_months:
+                default_idx = available_months.index(candidate)
+                break
         else:
-            # Find the latest month that is <= today
+            # If current month not found, find the latest month that is <= today
             past = [
                 (i, parse_month(m))
                 for i, m in enumerate(available_months)
