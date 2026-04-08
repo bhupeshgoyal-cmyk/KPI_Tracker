@@ -48,7 +48,7 @@ ACTUAL_COL_UPDATED_BY = "Updated By"
 
 # Gemini
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL   = "gemini-2.5-flash-preview-04-17"
+GEMINI_MODEL   = "gemini-1.5-flash"
 
 # Financial year month order: Apr → Mar
 FY_MONTH_ORDER = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3]
