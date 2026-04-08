@@ -202,7 +202,27 @@ else:
     ]].copy()
 
     mtd_display[config.KPI_COL_TARGET] = mtd_display[config.KPI_COL_TARGET].apply(_fmt_target)
-    mtd_display["Gap to Target"]       = mtd_display["Gap to Target"].apply(_gap_label)
+    
+    # Format MTD Progress to match target format
+    mtd_display["MTD Progress"] = mtd_display.apply(
+        lambda row: _fmt_actual(row) if not pd.isna(row.get("MTD Progress")) else "—",
+        axis=1
+    )
+    
+    # Format Gap to Target to match target format
+    mtd_display["Gap to Target"] = mtd_display.apply(
+        lambda row: (
+            f"{row.get('Gap to Target')*100:.1f}%" if (
+                isinstance(row.get(config.KPI_COL_TARGET), str) and 
+                row.get(config.KPI_COL_TARGET, "").endswith("%") and 
+                pd.notna(row.get("Gap to Target")) and 
+                abs(row.get("Gap to Target")) < 10
+            )
+            else f"{row.get('Gap to Target'):+.2f}" if pd.notna(row.get("Gap to Target")) else "—"
+        ),
+        axis=1
+    )
+    
     mtd_display = mtd_display.rename(columns={
         config.KPI_COL_NAME:        "KPI Name",
         config.KPI_COL_TARGET:      "Target",
@@ -213,9 +233,6 @@ else:
         mtd_display,
         use_container_width=True,
         hide_index=True,
-        column_config={
-            "MTD Progress": st.column_config.NumberColumn(format="%.2f"),
-        },
     )
 
 st.divider()
@@ -284,7 +301,7 @@ st.divider()
 # =============================================================================
 # Input Form
 # =============================================================================
-st.subheader("📝 Submit Weekly Actual")
+st.subheader("📝 Submit Actual")
 
 kpi_options = {
     f"{r[config.KPI_COL_NAME]} ({r[config.KPI_COL_CODE]})": r[config.KPI_COL_CODE]
@@ -340,7 +357,17 @@ if not kpi_history.empty:
     with st.container(border=True):
         st.caption(f"Last submission — {last_date}")
         lc1, lc2 = st.columns(2)
-        lc1.metric("Previous Actual", _fmt(last[config.ACTUAL_COL_ACTUAL]))
+        # Format Previous Actual to match target format
+        if _is_percent and last[config.ACTUAL_COL_ACTUAL] < 10:
+            # Decimal percentage format
+            prev_actual_display = f"{last[config.ACTUAL_COL_ACTUAL]*100:.1f}%"
+        elif _is_percent:
+            # Regular percentage
+            prev_actual_display = f"{last[config.ACTUAL_COL_ACTUAL]:.1f}%"
+        else:
+            # Regular numeric
+            prev_actual_display = f"{last[config.ACTUAL_COL_ACTUAL]:.2f}"
+        lc1.metric("Previous Actual", prev_actual_display)
         lc2.markdown(f"**Comment**\n\n{last_comment}")
 else:
     st.info("No previous submission for this KPI this month.")
