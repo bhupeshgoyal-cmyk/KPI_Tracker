@@ -4,6 +4,11 @@ import config
 from datetime import datetime, date
 import requests
 
+# =============================================================================
+# Gemini API Client Setup
+# =============================================================================
+# Note: Free tier has quota limits (5 requests/minute, 1500 requests/day)
+# For production use, upgrade to a paid plan at https://ai.google.dev
 # Initialise Gemini client
 genai.configure(api_key=config.GEMINI_API_KEY)
 _model = genai.GenerativeModel(
@@ -184,4 +189,24 @@ def generate_insights(department: str, enriched_df: pd.DataFrame) -> str:
         response = _model.generate_content(prompt)
         return response.text.strip()
     except Exception as e:
-        return f"Could not generate insights: {e}"
+        error_str = str(e)
+        
+        # Handle quota exceeded error
+        if "429" in error_str or "quota" in error_str.lower():
+            return (
+                "📊 **Insights Generation Paused** — API quota exceeded.\n\n"
+                "The free tier allows 5 requests per minute. To continue using AI insights:\n"
+                "• **Upgrade Plan**: Visit [Google AI Studio](https://ai.google.dev) to upgrade to a paid plan\n"
+                "• **Wait & Retry**: Wait 1 minute before generating insights again\n\n"
+                "Meanwhile, you can still view your KPI data and manual comments below."
+            )
+        
+        # Handle other API errors
+        if "401" in error_str or "unauthorized" in error_str.lower():
+            return (
+                "❌ **Authentication Error** — Invalid or missing API key.\n\n"
+                "Please check your GEMINI_API_KEY configuration."
+            )
+        
+        # Generic error
+        return f"⚠️ Could not generate insights: {e}"
