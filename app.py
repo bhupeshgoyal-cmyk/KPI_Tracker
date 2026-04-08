@@ -38,17 +38,23 @@ with st.sidebar:
         selected_month = ""
     else:
         # Default to current month if present, otherwise the latest month <= today
-        current_month_str = date.today().strftime("%b-%Y")
+        today = date.today()
+        current_month_str = today.strftime("%b-%Y")
+        today_ts = pd.Timestamp(today)
+        
+        default_idx = 0
         if current_month_str in available_months:
             default_idx = available_months.index(current_month_str)
         else:
-            today_ts = pd.Timestamp(date.today())
+            # Find the latest month that is <= today
             past = [
                 (i, parse_month(m))
                 for i, m in enumerate(available_months)
                 if pd.notna(parse_month(m)) and parse_month(m) <= today_ts
             ]
-            default_idx = past[-1][0] if past else 0
+            if past:
+                default_idx = past[-1][0]
+        
         selected_month = st.selectbox(
             "Month",
             options=available_months,
