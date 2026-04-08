@@ -96,7 +96,9 @@ def _load_kpi_registry() -> pd.DataFrame:
     for col in [config.KPI_COL_TARGET, config.KPI_COL_GREEN,
                 config.KPI_COL_AMBER, config.KPI_COL_RED]:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+            # Handle percentage strings like "100%" stored in the sheet
+            raw = df[col].astype(str).str.strip().str.rstrip('%')
+            df[col] = pd.to_numeric(raw, errors="coerce")
 
     # Normalise text columns
     for col in [config.KPI_COL_DEPARTMENT, config.KPI_COL_MONTH,

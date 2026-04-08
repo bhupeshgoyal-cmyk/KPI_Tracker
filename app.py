@@ -77,12 +77,19 @@ if kpis_df.empty:
 # =============================================================================
 # Helpers
 # =============================================================================
-RAG_BADGE       = {"Green": "🟢 Green", "Amber": "🟡 Amber", "Red": "🔴 Red", "Unknown": "⚪ No Data"}
-RAG_DELTA_COLOR = {"Green": "normal", "Amber": "off", "Red": "inverse", "Unknown": "off"}
-
 def _fmt(value, fallback="—", decimals=2):
     try:
         return f"{float(value):.{decimals}f}" if pd.notna(value) else fallback
+    except (TypeError, ValueError):
+        return fallback
+
+def _fmt_target(value, fallback="—"):
+    """Format a target value as a percentage string, e.g. 100 → '100%'."""
+    try:
+        v = float(value)
+        if pd.isna(v):
+            return fallback
+        return f"{int(v)}%" if v == int(v) else f"{v:.1f}%"
     except (TypeError, ValueError):
         return fallback
 
@@ -166,16 +173,17 @@ else:
     mtd_display = weekly_df[[
         config.KPI_COL_NAME,
         config.KPI_COL_TARGET,
+        config.KPI_COL_TARGET_DESC,
         "MTD Progress",
         "Gap to Target",
-        "RAG Status",
     ]].copy()
 
-    mtd_display["RAG Status"]     = mtd_display["RAG Status"].map(lambda s: RAG_BADGE.get(s, s))
-    mtd_display["Gap to Target"]  = mtd_display["Gap to Target"].apply(_gap_label)
+    mtd_display[config.KPI_COL_TARGET] = mtd_display[config.KPI_COL_TARGET].apply(_fmt_target)
+    mtd_display["Gap to Target"]       = mtd_display["Gap to Target"].apply(_gap_label)
     mtd_display = mtd_display.rename(columns={
-        config.KPI_COL_NAME:   "KPI Name",
-        config.KPI_COL_TARGET: "Target",
+        config.KPI_COL_NAME:        "KPI Name",
+        config.KPI_COL_TARGET:      "Target",
+        config.KPI_COL_TARGET_DESC: "Target Description",
     })
 
     st.dataframe(
@@ -183,7 +191,6 @@ else:
         use_container_width=True,
         hide_index=True,
         column_config={
-            "Target":       st.column_config.NumberColumn(format="%.2f"),
             "MTD Progress": st.column_config.NumberColumn(format="%.2f"),
         },
     )
@@ -208,15 +215,16 @@ all_kpis_display = enriched[[
     config.KPI_COL_CODE,
     config.KPI_COL_NAME,
     config.KPI_COL_TARGET,
+    config.KPI_COL_TARGET_DESC,
     "Latest Actual",
-    "RAG Status",
 ]].copy()
 
-all_kpis_display["RAG Status"] = all_kpis_display["RAG Status"].map(lambda s: RAG_BADGE.get(s, s))
+all_kpis_display[config.KPI_COL_TARGET] = all_kpis_display[config.KPI_COL_TARGET].apply(_fmt_target)
 all_kpis_display = all_kpis_display.rename(columns={
-    config.KPI_COL_CODE:   "Code",
-    config.KPI_COL_NAME:   "KPI Name",
-    config.KPI_COL_TARGET: "Target",
+    config.KPI_COL_CODE:        "Code",
+    config.KPI_COL_NAME:        "KPI Name",
+    config.KPI_COL_TARGET:      "Target",
+    config.KPI_COL_TARGET_DESC: "Target Description",
 })
 
 st.dataframe(
@@ -224,7 +232,6 @@ st.dataframe(
     use_container_width=True,
     hide_index=True,
     column_config={
-        "Target":        st.column_config.NumberColumn(format="%.2f"),
         "Latest Actual": st.column_config.NumberColumn(format="%.2f"),
     },
 )
