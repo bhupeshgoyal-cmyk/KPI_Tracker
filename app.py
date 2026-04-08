@@ -70,7 +70,7 @@ with st.sidebar:
         )
 
     st.divider()
-    if st.button("Sign out", use_container_width=True):
+    if st.button("Sign out", width="stretch"):
         logout()
 
 if not selected_month:
@@ -369,7 +369,7 @@ with st.form("actuals_form", clear_on_submit=True):
     fc1, fc2 = st.columns(2)
     fc1.text_input("Date",         value=date.today().strftime("%Y-%m-%d"), disabled=True)
     fc2.text_input("Submitted by", value=user["email"],                     disabled=True)
-    submitted = st.form_submit_button("Submit", use_container_width=True, type="primary")
+    submitted = st.form_submit_button("Submit", width="stretch", type="primary")
 
 if submitted:
     try:
