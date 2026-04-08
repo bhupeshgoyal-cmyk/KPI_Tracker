@@ -2,95 +2,103 @@ import pandas as pd
 import google.generativeai as genai
 import config
 
+# Initialise Gemini client
 genai.configure(api_key=config.GEMINI_API_KEY)
 _model = genai.GenerativeModel(
     model_name=config.GEMINI_MODEL,
-    generation_config={"temperature": 0.4, "max_output_tokens": 600},
+    generation_config=genai.GenerationConfig(
+        temperature=0.4,
+        max_output_tokens=800,
+    ),
 )
 
-# ---------------------------------------------------------------------------
+
+# =============================================================================
 # Prompt builder
-# ---------------------------------------------------------------------------
+# =============================================================================
 
 def _build_kpi_block(df: pd.DataFrame) -> str:
-    """Render the KPI data as a compact text block for the prompt."""
+    """Build a structured KPI context block for the prompt."""
     lines = []
     for _, row in df.iterrows():
-        actual  = row.get("Latest Actual")
-        target  = row.get(config.KPI_COL_TARGET)
-        comment = str(row.get(config.ACTUAL_COL_COMMENT, "") or "").strip()
+        name        = row.get(config.KPI_COL_NAME, "Unknown")
+        target      = row.get(config.KPI_COL_TARGET)
+        target_desc = str(row.get(config.KPI_COL_TARGET_DESC, "") or "").strip()
+        mtd         = row.get("MTD Progress")
+        gap         = row.get("Gap to Target")
+        actual      = row.get("Latest Actual")
+        comment     = str(row.get("Latest Comment", "") or "").strip()
+        rag         = row.get("RAG Status", "Unknown")
+        weekly      = str(row.get(config.KPI_COL_WEEKLY_TRACKED, "")).strip().upper()
 
-        if pd.notna(actual) and pd.notna(target) and target != 0:
-            variance_pct = ((actual - target) / target) * 100
-            variance_str = f"{variance_pct:+.1f}%"
-            status = row.get("RAG Status", "Unknown")
-        else:
-            variance_str = "N/A"
-            status = "No Data"
-
-        actual_str = f"{actual:.2f}" if pd.notna(actual) else "—"
         target_str = f"{target:.2f}" if pd.notna(target) else "—"
+        actual_str = f"{actual:.2f}" if pd.notna(actual) else "No data"
 
-        line = (
-            f"- {row[config.KPI_COL_NAME]}: "
-            f"Actual={actual_str}, Target={target_str}, "
-            f"Variance={variance_str}, Status={status}"
-        )
+        line = f"- {name} | Target: {target_str}"
+        if target_desc:
+            line += f" ({target_desc})"
+        line += f" | Status: {rag}"
+
+        if weekly == "YES" and pd.notna(mtd):
+            gap_str = f"{gap:+.2f}" if pd.notna(gap) else "—"
+            line += f" | MTD Progress: {mtd:.2f} | Gap to Target: {gap_str}"
+        else:
+            line += f" | Latest Actual: {actual_str}"
+
         if comment:
-            line += f'\n  HoD comment: "{comment}"'
+            line += f'\n  Comment: "{comment}"'
+
         lines.append(line)
 
     return "\n".join(lines)
 
 
 _SYSTEM_PROMPT = """\
-You are a chief of staff briefing a CEO. You write in tight, direct prose — \
-no filler, no hedging, no bullet-point padding. Every sentence must carry information.
+You are a business performance reviewer briefing a senior executive.
+Write in tight, direct prose — no filler, no bullet-point padding.
+Every sentence must carry information.
 
-Your job when analysing KPI data:
-1. Identify what is actually going wrong (not just what is red).
-2. Use the HoD comments as evidence — but interrogate them. \
-   If a comment does not credibly explain the miss, say so explicitly.
-3. Flag inconsistencies: a green KPI with a worrying comment, \
-   a red KPI with a dismissive comment, or a pattern across multiple KPIs \
-   that the HoD has not acknowledged.
-4. Recommend specific actions — who should do what, not generic advice.
-5. If the data is genuinely healthy, say so in one sentence and stop.
+For each KPI assess:
+1. Is it on track to meet its target? State clearly.
+2. Is the gap (if any) recoverable this month? Be specific.
+3. Does the HoD comment credibly explain the result? If not, say so.
+4. What specific action should be taken and who owns it?
 
-Output format — three sections, each a short paragraph, no headers or bullets:
+If all KPIs are on track, say so in one sentence and stop.
+
+Output three sections — each a short paragraph, no headers needed:
   SITUATION: What the numbers actually show.
   SCRUTINY: Whether the explanations hold up.
-  ACTION: What needs to happen next and who owns it.
+  ACTION: Specific next steps with clear ownership.
 """
 
 
-def _build_full_prompt(department: str, kpi_block: str) -> str:
+def _build_prompt(department: str, kpi_block: str) -> str:
     return (
         f"{_SYSTEM_PROMPT}\n\n"
         f"Department: {department}\n\n"
-        f"KPI Performance this week:\n{kpi_block}\n\n"
-        "Provide your executive assessment."
+        f"KPI Performance:\n{kpi_block}\n\n"
+        "Provide your assessment."
     )
 
 
-# ---------------------------------------------------------------------------
+# =============================================================================
 # Public API
-# ---------------------------------------------------------------------------
+# =============================================================================
 
 def generate_insights(department: str, enriched_df: pd.DataFrame) -> str:
     """
-    Generate an executive AI insight narrative for a department's KPI data.
-
-    Returns a plain-text string with SITUATION / SCRUTINY / ACTION sections.
-    Never raises — returns an error string so the UI can display it safely.
+    Generate an executive AI narrative for a department's KPI data.
+    Never raises — returns an error string on failure so the UI stays safe.
     """
     if enriched_df.empty:
         return "No KPI data available for this department."
 
     kpi_block = _build_kpi_block(enriched_df)
+    prompt    = _build_prompt(department, kpi_block)
 
     try:
-        response = _model.generate_content(_build_full_prompt(department, kpi_block))
+        response = _model.generate_content(prompt)
         return response.text.strip()
     except Exception as e:
         return f"Could not generate insights: {e}"

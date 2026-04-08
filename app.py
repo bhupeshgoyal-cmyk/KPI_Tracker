@@ -2,7 +2,10 @@ import pandas as pd
 import streamlit as st
 from datetime import date
 from auth import require_auth, logout
-from data_loader import load_kpis, load_actuals, enrich_with_rag, append_actual
+from data_loader import (
+    load_kpis, load_actuals, load_available_months,
+    enrich_with_rag, compute_mtd, append_actual, parse_month,
+)
 from ai_engine import generate_insights
 import config
 
@@ -13,61 +16,82 @@ st.set_page_config(
 )
 
 # =============================================================================
-# Auth & data
+# Auth
 # =============================================================================
 user       = require_auth()
 department = user["department"]
 
+# =============================================================================
+# Sidebar
+# =============================================================================
 with st.sidebar:
     st.markdown(f"### {user['name']}")
     st.caption(user["email"])
     st.caption(f"Department: **{department}**")
     st.divider()
 
-    # Month selector — defaults to current month
-    today         = date.today()
-    current_month = today.strftime("%Y-%m")
-    months        = [
-        (date(today.year, m, 1)).strftime("%Y-%m")
-        for m in range(1, 13)
-    ]
-    selected_month = st.selectbox(
-        "Month",
-        options=months,
-        index=months.index(current_month),
-    )
+    # Month selector — sourced from KPI Registry (FY order)
+    available_months = load_available_months(department)
+
+    if not available_months:
+        st.warning("No months found in KPI Registry.")
+        selected_month = ""
+    else:
+        # Default to current month if present, otherwise latest
+        current_month_str = date.today().strftime("%b-%Y")
+        default_idx = (
+            available_months.index(current_month_str)
+            if current_month_str in available_months
+            else len(available_months) - 1
+        )
+        selected_month = st.selectbox(
+            "Month",
+            options=available_months,
+            index=default_idx,
+        )
 
     st.divider()
     if st.button("Sign out", use_container_width=True):
         logout()
 
+if not selected_month:
+    st.warning("No KPI data found. Add months to the KPI Registry sheet.")
+    st.stop()
+
+# =============================================================================
+# Load data
+# =============================================================================
 try:
     kpis_df    = load_kpis(department, selected_month)
     actuals_df = load_actuals(department, selected_month)
     enriched   = enrich_with_rag(kpis_df, actuals_df)
+    enriched   = compute_mtd(enriched)
 except Exception as e:
     st.error(f"Could not load data from Google Sheets: {e}")
     st.stop()
 
 if kpis_df.empty:
-    st.warning(f"No KPIs found for **{department}** in **{selected_month}**. Check the KPI Registry sheet.")
+    st.warning(f"No KPIs found for **{department}** in **{selected_month}**.")
     st.stop()
 
 # =============================================================================
 # Helpers
 # =============================================================================
 RAG_BADGE       = {"Green": "🟢 Green", "Amber": "🟡 Amber", "Red": "🔴 Red", "Unknown": "⚪ No Data"}
-RAG_DELTA_COLOR = {"Green": "normal",   "Amber": "off",       "Red": "inverse", "Unknown": "off"}
+RAG_DELTA_COLOR = {"Green": "normal", "Amber": "off", "Red": "inverse", "Unknown": "off"}
 
-def _fmt(value, fallback="—"):
-    return f"{value:.2f}" if pd.notna(value) else fallback
+def _fmt(value, fallback="—", decimals=2):
+    try:
+        return f"{float(value):.{decimals}f}" if pd.notna(value) else fallback
+    except (TypeError, ValueError):
+        return fallback
 
-def _variance_label(variance, target):
-    if pd.isna(variance) or pd.isna(target) or target == 0:
-        return None
-    pct  = (variance / target) * 100
-    sign = "+" if variance >= 0 else ""
-    return f"{sign}{variance:.2f}  ({sign}{pct:.1f}%)"
+def _gap_label(gap):
+    """Return a coloured label for gap: green if positive, red if negative."""
+    if pd.isna(gap) or gap is None:
+        return "—"
+    sign = "+" if gap >= 0 else ""
+    return f"{sign}{gap:.2f}"
 
 def _render_insight(text: str) -> None:
     """Parse SITUATION / SCRUTINY / ACTION sections and render with coloured borders."""
@@ -101,77 +125,102 @@ def _render_insight(text: str) -> None:
             current_lines.append(stripped)
 
     _flush(current_label, current_lines)
-    if current_label is None:          # model returned free-form text
+    if current_label is None:
         st.markdown(text)
 
+
 # =============================================================================
-# 1. Welcome
+# Header
 # =============================================================================
 st.title("📊 KPI Dashboard")
 st.markdown(f"**{department}** · {selected_month}")
 st.divider()
 
+# Debug info (collapsed by default)
+with st.expander("🔍 Debug info", expanded=False):
+    kpis_loaded    = st.session_state.get("debug_kpis_loaded", len(kpis_df))
+    actuals_loaded = st.session_state.get("debug_actuals_loaded", len(actuals_df))
+    weekly_count   = int((enriched.get(config.KPI_COL_WEEKLY_TRACKED, pd.Series([])).str.upper() == "YES").sum()) if config.KPI_COL_WEEKLY_TRACKED in enriched.columns else 0
+    st.write(f"- KPIs loaded: **{kpis_loaded}**")
+    st.write(f"- Actuals loaded (this month): **{actuals_loaded}**")
+    st.write(f"- Weekly tracked KPIs: **{weekly_count}**")
+    if actuals_loaded == 0:
+        st.warning("No actuals found for this month. Submit data using the form below.")
+
 # =============================================================================
-# 2. KPI Summary (metric cards)
+# Section 1: MTD Progress — Weekly Tracked KPIs
 # =============================================================================
-raw_rag = enriched["RAG Status"]
+st.subheader("📈 MTD Progress — Weekly Tracked KPIs")
 
-st.subheader("KPI Summary")
-b1, b2, b3, b4 = st.columns(4)
-b1.metric("Total KPIs", len(enriched))
-b2.metric("🟢 Green",   int((raw_rag == "Green").sum()))
-b3.metric("🟡 Amber",   int((raw_rag == "Amber").sum()))
-b4.metric("🔴 Red",     int((raw_rag == "Red").sum()))
+weekly_df = enriched[
+    enriched.get(config.KPI_COL_WEEKLY_TRACKED, pd.Series([""] * len(enriched))).str.upper() == "YES"
+].copy() if config.KPI_COL_WEEKLY_TRACKED in enriched.columns else pd.DataFrame()
 
-st.write("")
+if weekly_df.empty:
+    st.info("No weekly tracked KPIs for this month.")
+else:
+    # Sort by largest negative gap first (most behind)
+    weekly_df["_gap_sort"] = pd.to_numeric(weekly_df["Gap to Target"], errors="coerce").fillna(0)
+    weekly_df = weekly_df.sort_values("_gap_sort").drop(columns=["_gap_sort"])
 
-COLS = 3
-for chunk in [enriched.iloc[i:i+COLS] for i in range(0, len(enriched), COLS)]:
-    cols = st.columns(COLS)
-    for col, (_, kpi) in zip(cols, chunk.iterrows()):
-        actual   = kpi["Latest Actual"]
-        target   = kpi[config.KPI_COL_TARGET]
-        rag      = kpi["RAG Status"]
-        variance = (actual - target) if pd.notna(actual) and pd.notna(target) else None
-        with col:
-            st.metric(
-                label=f"{RAG_BADGE[rag]}  ·  {kpi[config.KPI_COL_NAME]}",
-                value=_fmt(actual),
-                delta=_variance_label(variance, target),
-                delta_color=RAG_DELTA_COLOR[rag],
-                help=(
-                    f"**KPI Code:** {kpi[config.KPI_COL_CODE]}\n\n"
-                    f"**Target:** {_fmt(target)}\n\n"
-                    f"**Thresholds:** "
-                    f"🟢 ≥ {_fmt(kpi[config.KPI_COL_GREEN])}  "
-                    f"🟡 ≥ {_fmt(kpi[config.KPI_COL_AMBER])}  "
-                    f"🔴 < {_fmt(kpi[config.KPI_COL_AMBER])}"
-                ),
-            )
+    mtd_display = weekly_df[[
+        config.KPI_COL_NAME,
+        config.KPI_COL_TARGET,
+        "MTD Progress",
+        "Gap to Target",
+        "RAG Status",
+    ]].copy()
+
+    mtd_display["RAG Status"]     = mtd_display["RAG Status"].map(lambda s: RAG_BADGE.get(s, s))
+    mtd_display["Gap to Target"]  = mtd_display["Gap to Target"].apply(_gap_label)
+    mtd_display = mtd_display.rename(columns={
+        config.KPI_COL_NAME:   "KPI Name",
+        config.KPI_COL_TARGET: "Target",
+    })
+
+    st.dataframe(
+        mtd_display,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Target":       st.column_config.NumberColumn(format="%.2f"),
+            "MTD Progress": st.column_config.NumberColumn(format="%.2f"),
+        },
+    )
 
 st.divider()
 
 # =============================================================================
-# 3. KPI Table
+# Section 2: All KPIs
 # =============================================================================
-st.subheader("KPI Table")
+st.subheader("📋 All KPIs")
 
-table_df = enriched[[
+raw_rag = enriched["RAG Status"]
+b1, b2, b3, b4 = st.columns(4)
+b1.metric("Total",    len(enriched))
+b2.metric("🟢 Green", int((raw_rag == "Green").sum()))
+b3.metric("🟡 Amber", int((raw_rag == "Amber").sum()))
+b4.metric("🔴 Red",   int((raw_rag == "Red").sum()))
+
+st.write("")
+
+all_kpis_display = enriched[[
     config.KPI_COL_CODE,
     config.KPI_COL_NAME,
     config.KPI_COL_TARGET,
     "Latest Actual",
     "RAG Status",
 ]].copy()
-table_df["RAG Status"] = table_df["RAG Status"].map(lambda s: RAG_BADGE.get(s, s))
-table_df = table_df.rename(columns={
+
+all_kpis_display["RAG Status"] = all_kpis_display["RAG Status"].map(lambda s: RAG_BADGE.get(s, s))
+all_kpis_display = all_kpis_display.rename(columns={
     config.KPI_COL_CODE:   "Code",
     config.KPI_COL_NAME:   "KPI Name",
     config.KPI_COL_TARGET: "Target",
 })
 
 st.dataframe(
-    table_df,
+    all_kpis_display,
     use_container_width=True,
     hide_index=True,
     column_config={
@@ -183,17 +232,18 @@ st.dataframe(
 st.divider()
 
 # =============================================================================
-# 4. Input Form
+# Input Form
 # =============================================================================
 st.subheader("📝 Submit Weekly Actual")
 
-kpi_options    = {
+kpi_options = {
     f"{r[config.KPI_COL_NAME]} ({r[config.KPI_COL_CODE]})": r[config.KPI_COL_CODE]
     for _, r in kpis_df.iterrows()
 }
 selected_label = st.selectbox("Select KPI", options=list(kpi_options.keys()))
 selected_code  = kpi_options[selected_label]
 
+# Show last submission for selected KPI
 kpi_history = (
     actuals_df[actuals_df[config.ACTUAL_COL_KPI_CODE] == selected_code]
     if not actuals_df.empty else pd.DataFrame()
@@ -209,7 +259,7 @@ if not kpi_history.empty:
         lc1.metric("Previous Actual", _fmt(last[config.ACTUAL_COL_ACTUAL]))
         lc2.markdown(f"**Comment**\n\n{last_comment}")
 else:
-    st.info("No previous submission found for this KPI.")
+    st.info("No previous submission for this KPI this month.")
 
 with st.form("actuals_form", clear_on_submit=True):
     actual_value = st.number_input("Actual value", min_value=0.0, step=0.01, format="%.2f")
@@ -240,7 +290,7 @@ if submitted:
 st.divider()
 
 # =============================================================================
-# 5. Latest Comments
+# Latest Comments
 # =============================================================================
 st.subheader("💬 Latest Comments")
 
@@ -248,7 +298,7 @@ if actuals_df.empty:
     st.info("No comments submitted yet.")
 else:
     comments = (
-        actuals_df[actuals_df[config.ACTUAL_COL_COMMENT].str.strip().ne("")]
+        actuals_df[actuals_df[config.ACTUAL_COL_COMMENT].astype(str).str.strip().ne("")]
         .sort_values(config.ACTUAL_COL_DATE, ascending=False)
         .groupby(config.ACTUAL_COL_KPI_CODE, sort=False)
         .first()
@@ -272,7 +322,7 @@ else:
             st.divider()
 
 # =============================================================================
-# 6. AI Insights — Performance Summary
+# AI Insights
 # =============================================================================
 st.subheader("🧠 Performance Summary")
 
