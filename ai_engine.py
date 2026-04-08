@@ -1,6 +1,8 @@
 import pandas as pd
 import google.generativeai as genai
 import config
+from datetime import datetime, date
+import requests
 
 # Initialise Gemini client
 genai.configure(api_key=config.GEMINI_API_KEY)
@@ -11,6 +13,84 @@ _model = genai.GenerativeModel(
         max_output_tokens=800,
     ),
 )
+
+
+# =============================================================================
+# Context helpers
+# =============================================================================
+
+def _get_greeting_context() -> str:
+    """Generate contextual greeting based on day of week and time."""
+    now = datetime.now()
+    day_name = now.strftime("%A")
+    hour = now.hour
+    
+    greeting = f"Good {('morning' if hour < 12 else 'afternoon' if hour < 17 else 'evening')}."
+    
+    # Add day-specific context
+    if day_name == "Monday":
+        greeting += " Hope you had a restful weekend."
+    elif day_name == "Friday":
+        greeting += " Great work this week — let's finish strong."
+    
+    return greeting
+
+
+def _get_weather_context() -> str:
+    """Try to get weather context for Delhi (optional/non-critical)."""
+    try:
+        # Using Open-Meteo API (free, no key required)
+        # Delhi coordinates
+        response = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={
+                "latitude": 28.7041,
+                "longitude": 77.1025,
+                "current": "temperature_2m,weather_code,relative_humidity_2m",
+                "timezone": "Asia/Kolkata"
+            },
+            timeout=3
+        )
+        if response.status_code == 200:
+            data = response.json()
+            current = data.get("current", {})
+            temp = current.get("temperature_2m")
+            humidity = current.get("relative_humidity_2m")
+            
+            if temp is not None:
+                # Interpret weather code
+                weather_code = current.get("weather_code", 0)
+                conditions = {
+                    0: "Clear",
+                    1: "Partly cloudy",
+                    2: "Overcast",
+                    3: "Overcast",
+                    45: "Foggy",
+                    48: "Foggy",
+                    51: "Light drizzle",
+                    61: "Light rain",
+                    80: "Showers",
+                    95: "Thunderstorm"
+                }
+                condition = conditions.get(weather_code, "Variable conditions")
+                return f"In Delhi, it's {temp}°C and {condition}."
+    except Exception:
+        pass
+    
+    return ""
+
+
+def _build_context_header() -> str:
+    """Build a brief context header for the briefing."""
+    greeting = _get_greeting_context()
+    weather = _get_weather_context()
+    
+    header = greeting
+    if weather:
+        header += f" {weather}"
+    
+    header += " Here's your KPI briefing."
+    return header
 
 
 # =============================================================================
@@ -74,9 +154,12 @@ Output three sections — each a short paragraph, no headers needed:
 
 
 def _build_prompt(department: str, kpi_block: str) -> str:
+    context_header = _build_context_header()
     return (
+        f"{context_header}\n\n"
         f"{_SYSTEM_PROMPT}\n\n"
-        f"Department: {department}\n\n"
+        f"Department: {department}\n"
+        f"Date: {date.today().strftime('%d %B %Y')}\n\n"
         f"KPI Performance:\n{kpi_block}\n\n"
         "Provide your assessment."
     )
