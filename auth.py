@@ -55,10 +55,17 @@ def _build_user_lookup():
         department = u.get("department") or u.get("Department")
         
         if email:  # Only add if email exists
+            # Parse multiple departments if comma-separated
+            dept_list = []
+            if department:
+                dept_str = str(department).strip()
+                # Split by comma if multiple departments, otherwise single department
+                dept_list = [d.strip() for d in dept_str.split(",") if d.strip()]
+            
             normalized_users.append({
                 "email": str(email).strip(),
                 "name": str(name).strip() if name else "Unknown",
-                "department": str(department).strip() if department else "Unknown"
+                "departments": dept_list if dept_list else ["Unknown"]  # Store as list
             })
     
     return {u["email"].lower(): u for u in normalized_users}
@@ -116,9 +123,10 @@ def show_login() -> None:
         return
 
     st.session_state.user = {
-        "email":      user["email"],
-        "name":       user["name"],
-        "department": user["department"],
+        "email":       user["email"],
+        "name":        user["name"],
+        "departments": user["departments"],  # Store as list
+        "department":  user["departments"][0] if user["departments"] else "Unknown",  # Default to first
     }
     st.rerun()
 

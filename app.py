@@ -18,8 +18,13 @@ st.set_page_config(
 # =============================================================================
 # Auth
 # =============================================================================
-user       = require_auth()
-department = user["department"]
+user = require_auth()
+
+# Initialize session state for department selection if not present
+if "selected_dept" not in st.session_state:
+    st.session_state.selected_dept = user["department"]
+
+department = st.session_state.selected_dept
 
 # =============================================================================
 # Sidebar
@@ -27,7 +32,25 @@ department = user["department"]
 with st.sidebar:
     st.markdown(f"### {user['name']}")
     st.caption(user["email"])
-    st.caption(f"Department: **{department}**")
+    
+    # Department selector if user has multiple departments
+    user_departments = user.get("departments", [user.get("department", "Unknown")])
+    if len(user_departments) > 1:
+        st.caption("**Department:**")
+        selected_dept = st.selectbox(
+            "Select department",
+            options=user_departments,
+            index=user_departments.index(department) if department in user_departments else 0,
+            key="dept_selector",
+            label_visibility="collapsed"
+        )
+        if selected_dept != department:
+            st.session_state.selected_dept = selected_dept
+            department = selected_dept
+            st.rerun()
+    else:
+        st.caption(f"Department: **{department}**")
+    
     st.divider()
 
     # Month selector — sourced from KPI Registry (FY order)
