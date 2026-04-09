@@ -19,12 +19,37 @@ st.set_page_config(
 # Stashfin Brand Colors and Custom Styling
 st.markdown("""
 <style>
-    /* Hide Streamlit share button and toolbar */
+    /* Hide Streamlit toolbar buttons except star and menu */
     [data-testid="toolbarButtonContainer"] {
         display: none !important;
     }
     
     .stApp [data-testid="baseButton-secondary"] {
+        display: none !important;
+    }
+    
+    /* Hide all header buttons except star and menu */
+    [data-testid="stHeader"] [data-testid="baseButton-secondary"]:nth-child(1),
+    [data-testid="stHeader"] [data-testid="baseButton-secondary"]:nth-child(2),
+    [data-testid="stHeader"] [data-testid="baseButton-secondary"]:nth-child(3),
+    [data-testid="stHeader"] [data-testid="baseButton-secondary"]:nth-child(4) {
+        display: none !important;
+    }
+    
+    /* Hide the deploy button and other toolbar elements */
+    [data-testid="stHeader"] .stActionButton {
+        display: none !important;
+    }
+    
+    /* Keep only the star and hamburger menu visible */
+    [data-testid="stHeader"] button:has(svg[data-testid="icon-star"]),
+    [data-testid="stHeader"] button:has(svg[data-testid="icon-ellipsis"]),
+    .stHeader button {
+        display: inline-block !important;
+    }
+    
+    /* Alternative approach: hide share and other deployment buttons */
+    [data-testid="stDecoratedButton"] {
         display: none !important;
     }
     
