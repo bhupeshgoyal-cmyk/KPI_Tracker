@@ -48,9 +48,9 @@ ACTUAL_COL_ACTUAL     = "Actual"
 ACTUAL_COL_COMMENT    = "Comment"
 ACTUAL_COL_UPDATED_BY = "Updated By"
 
-# Gemini
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL   = "gemini-2.5-flash"
+# OpenAI
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL   = "gpt-4o-mini"
 
 # Financial year month order: Apr → Mar
 FY_MONTH_ORDER = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3]

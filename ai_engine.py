@@ -1,23 +1,13 @@
 import pandas as pd
-import google.generativeai as genai
+from openai import OpenAI
 import config
 from datetime import datetime, date
 import requests
 
 # =============================================================================
-# Gemini API Client Setup
+# OpenAI Client Setup
 # =============================================================================
-# Note: Free tier has quota limits (5 requests/minute, 1500 requests/day)
-# For production use, upgrade to a paid plan at https://ai.google.dev
-# Initialise Gemini client
-genai.configure(api_key=config.GEMINI_API_KEY)
-_model = genai.GenerativeModel(
-    model_name=config.GEMINI_MODEL,
-    generation_config=genai.GenerationConfig(
-        temperature=0.4,
-        max_output_tokens=800,
-    ),
-)
+_client = OpenAI(api_key=config.OPENAI_API_KEY)
 
 
 # =============================================================================
@@ -29,15 +19,15 @@ def _get_greeting_context() -> str:
     now = datetime.now()
     day_name = now.strftime("%A")
     hour = now.hour
-    
+
     greeting = f"Good {('morning' if hour < 12 else 'afternoon' if hour < 17 else 'evening')}."
-    
+
     # Add day-specific context
     if day_name == "Monday":
         greeting += " Hope you had a restful weekend."
     elif day_name == "Friday":
         greeting += " Great work this week — let's finish strong."
-    
+
     return greeting
 
 
@@ -61,7 +51,7 @@ def _get_weather_context() -> str:
             current = data.get("current", {})
             temp = current.get("temperature_2m")
             humidity = current.get("relative_humidity_2m")
-            
+
             if temp is not None:
                 # Interpret weather code
                 weather_code = current.get("weather_code", 0)
@@ -81,7 +71,7 @@ def _get_weather_context() -> str:
                 return f"In Delhi, it's {temp}°C and {condition}."
     except Exception:
         pass
-    
+
     return ""
 
 
@@ -89,11 +79,11 @@ def _build_context_header() -> str:
     """Build a brief context header for the briefing."""
     greeting = _get_greeting_context()
     weather = _get_weather_context()
-    
+
     header = greeting
     if weather:
         header += f" {weather}"
-    
+
     header += " Here's your KPI briefing."
     return header
 
@@ -162,7 +152,6 @@ def _build_prompt(department: str, kpi_block: str) -> str:
     context_header = _build_context_header()
     return (
         f"{context_header}\n\n"
-        f"{_SYSTEM_PROMPT}\n\n"
         f"Department: {department}\n"
         f"Date: {date.today().strftime('%d %B %Y')}\n\n"
         f"KPI Performance:\n{kpi_block}\n\n"
@@ -186,27 +175,29 @@ def generate_insights(department: str, enriched_df: pd.DataFrame) -> str:
     prompt    = _build_prompt(department, kpi_block)
 
     try:
-        response = _model.generate_content(prompt)
-        return response.text.strip()
+        response = _client.chat.completions.create(
+            model=config.OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user",   "content": prompt},
+            ],
+            temperature=0.4,
+            max_tokens=800,
+        )
+        return response.choices[0].message.content.strip()
     except Exception as e:
         error_str = str(e)
-        
-        # Handle quota exceeded error
-        if "429" in error_str or "quota" in error_str.lower():
+
+        if "429" in error_str or "quota" in error_str.lower() or "rate_limit" in error_str.lower():
             return (
-                "📊 **Insights Generation Paused** — API quota exceeded.\n\n"
-                "The free tier allows 5 requests per minute. To continue using AI insights:\n"
-                "• **Upgrade Plan**: Visit [Google AI Studio](https://ai.google.dev) to upgrade to a paid plan\n"
-                "• **Wait & Retry**: Wait 1 minute before generating insights again\n\n"
-                "Meanwhile, you can still view your KPI data and manual comments below."
+                "📊 **Insights Generation Paused** — API rate limit reached.\n\n"
+                "Please wait a moment before generating insights again."
             )
-        
-        # Handle other API errors
-        if "401" in error_str or "unauthorized" in error_str.lower():
+
+        if "401" in error_str or "authentication" in error_str.lower() or "invalid_api_key" in error_str.lower():
             return (
                 "❌ **Authentication Error** — Invalid or missing API key.\n\n"
-                "Please check your GEMINI_API_KEY configuration."
+                "Please check your OPENAI_API_KEY configuration."
             )
-        
-        # Generic error
+
         return f"⚠️ Could not generate insights: {e}"
