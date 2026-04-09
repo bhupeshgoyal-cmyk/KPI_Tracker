@@ -430,11 +430,11 @@ else:
     weekly_df["_gap_sort"] = pd.to_numeric(weekly_df["Gap to Target"], errors="coerce").fillna(0)
     weekly_df = weekly_df.sort_values("_gap_sort").drop(columns=["_gap_sort"])
 
-    # Build column list - add Owner column for admins
+    # Build column list - add Owner column for admins (if it exists)
     mtd_cols = [
         config.KPI_COL_NAME,
     ]
-    if user.get("is_admin", False):
+    if user.get("is_admin", False) and config.KPI_COL_OWNER in weekly_df.columns:
         mtd_cols.append(config.KPI_COL_OWNER)
     mtd_cols.extend([
         config.KPI_COL_TARGET,
@@ -459,13 +459,13 @@ else:
         axis=1
     )
     
-    # Build rename mapping - include Owner for admins
+    # Build rename mapping - include Owner for admins (if it exists)
     rename_map = {
         config.KPI_COL_NAME:        "KPI Name",
         config.KPI_COL_TARGET:      "Target",
         config.KPI_COL_TARGET_DESC: "Target Description",
     }
-    if user.get("is_admin", False):
+    if user.get("is_admin", False) and config.KPI_COL_OWNER in weekly_df.columns:
         rename_map[config.KPI_COL_OWNER] = "Owner"
     
     mtd_display = mtd_display.rename(columns=rename_map)
@@ -528,12 +528,12 @@ with b4:
 
 st.write("")
 
-# Build column list - add Owner column for admins
+# Build column list - add Owner column for admins (if it exists)
 kpi_cols = [
     config.KPI_COL_CODE,
     config.KPI_COL_NAME,
 ]
-if user.get("is_admin", False):
+if user.get("is_admin", False) and config.KPI_COL_OWNER in enriched.columns:
     kpi_cols.append(config.KPI_COL_OWNER)
 kpi_cols.extend([
     config.KPI_COL_TARGET,
@@ -581,7 +581,7 @@ all_kpis_display = all_kpis_display.rename(columns={
     config.KPI_COL_TARGET_DESC: "Target Description",
     **({
         config.KPI_COL_OWNER: "Owner"
-    } if user.get("is_admin", False) else {})
+    } if (user.get("is_admin", False) and config.KPI_COL_OWNER in enriched.columns) else {})
 })
 
 st.dataframe(
