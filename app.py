@@ -482,6 +482,16 @@ else:
             return "—"
         is_pct = row.get(pct_col_name, False) if pct_col_name in weekly_df.columns else False
         if is_pct:
+            # Check if target is in decimal format (0-1 range)
+            target_val = row.get(config.KPI_COL_TARGET)
+            try:
+                target_float = float(target_val)
+                # If target is decimal (<=1.0) and actual is also decimal (<=1.0), multiply by 100
+                if target_float <= 1.0 and actual <= 1.0:
+                    return f"{actual * 100:.2f}%"
+            except (TypeError, ValueError):
+                pass
+            # Otherwise, actual is already in percentage format
             return f"{actual:.2f}%"
         else:
             return f"{actual:.2f}"
@@ -495,6 +505,16 @@ else:
             return "—"
         is_pct = row.get(pct_col_name, False) if pct_col_name in weekly_df.columns else False
         if is_pct:
+            # Check if target is in decimal format (0-1 range)
+            target_val = row.get(config.KPI_COL_TARGET)
+            try:
+                target_float = float(target_val)
+                # If target is decimal (<=1.0) and gap is also decimal (<=1.0), multiply by 100
+                if target_float <= 1.0 and abs(gap) <= 1.0:
+                    return f"{gap * 100:+.2f}%"
+            except (TypeError, ValueError):
+                pass
+            # Otherwise, gap is already in percentage format
             return f"{gap:+.2f}%"
         else:
             return f"{gap:+.2f}"
@@ -621,6 +641,16 @@ def _fmt_actual_with_flag(row):
         return "—"
     is_pct = row.get(pct_col_name, False) if pct_col_name in enriched.columns else False
     if is_pct:
+        # Check if target is in decimal format (0-1 range)
+        target_val = row.get(config.KPI_COL_TARGET)
+        try:
+            target_float = float(target_val)
+            # If target is decimal (<=1.0) and actual is also decimal (<=1.0), multiply by 100
+            if target_float <= 1.0 and actual <= 1.0:
+                return f"{actual * 100:.2f}%"
+        except (TypeError, ValueError):
+            pass
+        # Otherwise, actual is already in percentage format
         return f"{actual:.2f}%"
     else:
         return f"{actual:.2f}"
@@ -635,6 +665,16 @@ def _fmt_gap_with_flag_all(row):
         return "—"
     is_pct = row.get(pct_col_name, False) if pct_col_name in enriched.columns else False
     if is_pct:
+        # Check if target is in decimal format (0-1 range)
+        target_val = row.get(config.KPI_COL_TARGET)
+        try:
+            target_float = float(target_val)
+            # If target is decimal (<=1.0) and gap is also decimal (<=1.0), multiply by 100
+            if target_float <= 1.0 and abs(gap) <= 1.0:
+                return f"{gap * 100:+.2f}%"
+        except (TypeError, ValueError):
+            pass
+        # Otherwise, gap is already in percentage format
         return f"{gap:+.2f}%"
     else:
         return f"{gap:+.2f}"
