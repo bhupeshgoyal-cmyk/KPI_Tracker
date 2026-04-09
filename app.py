@@ -495,22 +495,10 @@ else:
     
     mtd_display["MTD Progress"] = mtd_display.apply(_fmt_mtd_with_flag, axis=1)
     
-    # Format Gap to Target using per-row flag
-    def _fmt_gap_with_flag(row):
-        gap = row.get("Gap to Target")
-        if pd.isna(gap):
-            return "—"
-        is_pct = row.get(pct_col_name, False) if pct_col_name in weekly_df.columns else False
-        if is_pct:
-            # Check if gap is in decimal format (0-1 range) - if so, multiply by 100
-            if abs(gap) <= 1.0:
-                return f"{gap * 100:+.2f}%"
-            else:
-                return f"{gap:+.2f}%"
-        else:
-            return f"{gap:+.2f}"
-    
-    mtd_display["Gap to Target"] = mtd_display.apply(_fmt_gap_with_flag, axis=1)
+    # Gap to Target is always % of target — format uniformly
+    mtd_display["Gap to Target"] = mtd_display["Gap to Target"].apply(
+        lambda g: f"{g:+.2f}%" if pd.notna(g) else "—"
+    )
     
     # Drop the percentage flag column before renaming/displaying
     if pct_col_name in mtd_display.columns:
@@ -645,23 +633,10 @@ def _fmt_actual_with_flag(row):
 
 all_kpis_display["Latest Actual"] = all_kpis_display.apply(_fmt_actual_with_flag, axis=1)
 
-# Format Gap to Target using per-row flag
-def _fmt_gap_with_flag_all(row):
-    """Format gap to match target format using per-row flag."""
-    gap = row.get("Gap to Target")
-    if pd.isna(gap):
-        return "—"
-    is_pct = row.get(pct_col_name, False) if pct_col_name in enriched.columns else False
-    if is_pct:
-        # Check if gap is in decimal format (0-1 range) - if so, multiply by 100
-        if abs(gap) <= 1.0:
-            return f"{gap * 100:+.2f}%"
-        else:
-            return f"{gap:+.2f}%"
-    else:
-        return f"{gap:+.2f}"
-
-all_kpis_display["Gap to Target"] = all_kpis_display.apply(_fmt_gap_with_flag_all, axis=1)
+# Gap to Target is always % of target — format uniformly
+all_kpis_display["Gap to Target"] = all_kpis_display["Gap to Target"].apply(
+    lambda g: f"{g:+.2f}%" if pd.notna(g) else "—"
+)
 
 # Drop the percentage flag column before renaming/displaying
 if pct_col_name in all_kpis_display.columns:

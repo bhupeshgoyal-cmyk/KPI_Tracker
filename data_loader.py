@@ -389,38 +389,28 @@ def compute_mtd(enriched_df: pd.DataFrame) -> pd.DataFrame:
     df["MTD Progress"]  = None
     df["Gap to Target"] = None
 
+    # Weekly KPIs: MTD Progress = latest submitted value
     df.loc[is_weekly, "MTD Progress"] = df.loc[is_weekly, "Latest Actual"]
 
-    df.loc[is_weekly, "Gap to Target"] = df.loc[is_weekly].apply(
-        lambda row: (
-            _calculate_gap(
-                float(row["MTD Progress"]),
-                float(row[config.KPI_COL_TARGET])
-            )
-            if pd.notna(row["MTD Progress"]) and pd.notna(row[config.KPI_COL_TARGET])
-            else None
-        ),
-        axis=1,
-    )
+    # Gap to Target for ALL KPIs = (latest_actual - target) / target * 100
+    def _gap_for_row(row):
+        actual = row.get("Latest Actual")
+        target = row.get(config.KPI_COL_TARGET)
+        if pd.notna(actual) and pd.notna(target):
+            return _calculate_gap(float(actual), float(target))
+        return None
+
+    df["Gap to Target"] = df.apply(_gap_for_row, axis=1)
 
     return df
 
 
-def _calculate_gap(actual: float, target: float) -> float:
+def _calculate_gap(actual: float, target: float) -> float | None:
+    """Gap = (actual - target) / target * 100, expressed as a percentage of target.
+    Returns None if target is zero to avoid division by zero.
+    e.g. actual=150, target=424 → (150-424)/424*100 = -64.6 (%)
+         actual=0.92, target=1.0 → (0.92-1.0)/1.0*100 = -8.0 (%)
     """
-    Calculate gap = actual - target, normalizing formats first.
-    
-    Strategy:
-    - If target <= 1.0 (decimal format), normalize actual to decimal if it's > 10
-    - If target > 10 (percentage format), normalize actual to percentage if it's <= 1.0
-    - Otherwise, use as-is (both are regular numbers)
-    """
-    # Detect target format and normalize actual to match
-    if target <= 1.0 and actual > 10:
-        # Target is decimal (0-1), actual is percentage (0-100) → normalize actual
-        actual = actual / 100.0
-    elif target > 10 and actual <= 1.0:
-        # Target is percentage (0-100), actual is decimal (0-1) → normalize actual
-        actual = actual * 100.0
-    
-    return actual - target
+    if target == 0:
+        return None
+    return (actual - target) / target * 100
