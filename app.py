@@ -430,13 +430,20 @@ else:
     weekly_df["_gap_sort"] = pd.to_numeric(weekly_df["Gap to Target"], errors="coerce").fillna(0)
     weekly_df = weekly_df.sort_values("_gap_sort").drop(columns=["_gap_sort"])
 
-    mtd_display = weekly_df[[
+    # Build column list - add Owner column for admins
+    mtd_cols = [
         config.KPI_COL_NAME,
+    ]
+    if user.get("is_admin", False):
+        mtd_cols.append(config.KPI_COL_OWNER)
+    mtd_cols.extend([
         config.KPI_COL_TARGET,
         config.KPI_COL_TARGET_DESC,
         "MTD Progress",
         "Gap to Target",
-    ]].copy()
+    ])
+    
+    mtd_display = weekly_df[mtd_cols].copy()
 
     mtd_display[config.KPI_COL_TARGET] = mtd_display[config.KPI_COL_TARGET].apply(_fmt_target)
     
@@ -452,11 +459,16 @@ else:
         axis=1
     )
     
-    mtd_display = mtd_display.rename(columns={
+    # Build rename mapping - include Owner for admins
+    rename_map = {
         config.KPI_COL_NAME:        "KPI Name",
         config.KPI_COL_TARGET:      "Target",
         config.KPI_COL_TARGET_DESC: "Target Description",
-    })
+    }
+    if user.get("is_admin", False):
+        rename_map[config.KPI_COL_OWNER] = "Owner"
+    
+    mtd_display = mtd_display.rename(columns=rename_map)
 
     st.dataframe(
         mtd_display,
@@ -516,14 +528,21 @@ with b4:
 
 st.write("")
 
-all_kpis_display = enriched[[
+# Build column list - add Owner column for admins
+kpi_cols = [
     config.KPI_COL_CODE,
     config.KPI_COL_NAME,
+]
+if user.get("is_admin", False):
+    kpi_cols.append(config.KPI_COL_OWNER)
+kpi_cols.extend([
     config.KPI_COL_TARGET,
     config.KPI_COL_TARGET_DESC,
     "Latest Actual",
     "Gap to Target",
-]].copy()
+])
+
+all_kpis_display = enriched[kpi_cols].copy()
 
 all_kpis_display[config.KPI_COL_TARGET] = all_kpis_display[config.KPI_COL_TARGET].apply(_fmt_target)
 
@@ -560,6 +579,9 @@ all_kpis_display = all_kpis_display.rename(columns={
     config.KPI_COL_NAME:        "KPI Name",
     config.KPI_COL_TARGET:      "Target",
     config.KPI_COL_TARGET_DESC: "Target Description",
+    **({
+        config.KPI_COL_OWNER: "Owner"
+    } if user.get("is_admin", False) else {})
 })
 
 st.dataframe(
