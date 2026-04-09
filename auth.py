@@ -5,10 +5,10 @@ import pandas as pd
 _users_cache = None
 
 
-def _load_users():
+def _load_users(force_refresh=False):
     """Load users from Google Sheet or fallback to hardcoded list."""
     global _users_cache
-    if _users_cache is not None:
+    if _users_cache is not None and not force_refresh:
         return _users_cache
     
     try:
@@ -33,6 +33,13 @@ def _load_users():
         {"email": "david@company.com",          "name": "David",   "department": "Technology"},
     ]
     return _users_cache
+
+
+def clear_user_cache():
+    """Clear the user cache to force reload from Google Sheet on next login."""
+    global _users_cache, _USER_LOOKUP
+    _users_cache = None
+    _USER_LOOKUP = None
 
 
 def _build_user_lookup():
@@ -60,17 +67,24 @@ def _build_user_lookup():
 _USER_LOOKUP = None
 
 
-def _get_user_lookup():
+def _get_user_lookup(force_refresh=False):
     """Get the cached user lookup dict."""
     global _USER_LOOKUP
-    if _USER_LOOKUP is None:
+    if _USER_LOOKUP is None or force_refresh:
+        if force_refresh:
+            _load_users(force_refresh=True)
         _USER_LOOKUP = _build_user_lookup()
     return _USER_LOOKUP
 
 
-def _validate_email(email: str) -> dict | None:
-    """Return user dict if email is recognised, else None."""
-    lookup = _get_user_lookup()
+def _validate_email(email: str, force_refresh=False) -> dict | None:
+    """Return user dict if email is recognised, else None.
+    
+    Args:
+        email: Email address to validate
+        force_refresh: If True, reload users from Google Sheet
+    """
+    lookup = _get_user_lookup(force_refresh=force_refresh)
     return lookup.get(email.strip().lower())
 
 
@@ -90,7 +104,13 @@ def show_login() -> None:
         st.error("Please enter your email address.")
         return
 
+    # Try to validate email (with cache)
     user = _validate_email(email)
+    
+    # If not found and cache exists, try force refresh in case users sheet was updated
+    if user is None:
+        user = _validate_email(email, force_refresh=True)
+    
     if user is None:
         st.error("Email not recognised. Contact your administrator.")
         return
