@@ -31,6 +31,7 @@ USER_COL_DEPARTMENT = "Department"
 KPI_COL_CODE           = "KPI Code"
 KPI_COL_NAME           = "KPI Name"
 KPI_COL_OWNER          = "Owner"  # Name of person responsible for the KPI
+KPI_COL_UNIT           = "Unit"   # Unit of measurement (e.g., %, $, Count)
 KPI_COL_DEPARTMENT     = "Department"
 KPI_COL_MONTH          = "Month"
 KPI_COL_TARGET         = "Target"

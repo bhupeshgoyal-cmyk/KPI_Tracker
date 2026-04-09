@@ -436,6 +436,9 @@ else:
     ]
     if user.get("is_admin", False) and config.KPI_COL_OWNER in weekly_df.columns:
         mtd_cols.append(config.KPI_COL_OWNER)
+    # Add Unit column if it exists
+    if config.KPI_COL_UNIT in weekly_df.columns:
+        mtd_cols.append(config.KPI_COL_UNIT)
     mtd_cols.extend([
         config.KPI_COL_TARGET,
         config.KPI_COL_TARGET_DESC,
@@ -467,6 +470,8 @@ else:
     }
     if user.get("is_admin", False) and config.KPI_COL_OWNER in weekly_df.columns:
         rename_map[config.KPI_COL_OWNER] = "Owner"
+    if config.KPI_COL_UNIT in weekly_df.columns:
+        rename_map[config.KPI_COL_UNIT] = "Unit"
     
     mtd_display = mtd_display.rename(columns=rename_map)
 
@@ -535,6 +540,9 @@ kpi_cols = [
 ]
 if user.get("is_admin", False) and config.KPI_COL_OWNER in enriched.columns:
     kpi_cols.append(config.KPI_COL_OWNER)
+# Add Unit column if it exists
+if config.KPI_COL_UNIT in enriched.columns:
+    kpi_cols.append(config.KPI_COL_UNIT)
 kpi_cols.extend([
     config.KPI_COL_TARGET,
     config.KPI_COL_TARGET_DESC,
@@ -581,7 +589,10 @@ all_kpis_display = all_kpis_display.rename(columns={
     config.KPI_COL_TARGET_DESC: "Target Description",
     **({
         config.KPI_COL_OWNER: "Owner"
-    } if (user.get("is_admin", False) and config.KPI_COL_OWNER in enriched.columns) else {})
+    } if (user.get("is_admin", False) and config.KPI_COL_OWNER in enriched.columns) else {}),
+    **({
+        config.KPI_COL_UNIT: "Unit"
+    } if config.KPI_COL_UNIT in enriched.columns else {})
 })
 
 st.dataframe(
