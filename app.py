@@ -434,13 +434,8 @@ else:
     mtd_cols = [
         config.KPI_COL_NAME,
     ]
-    # Debug: show what columns are available
-    if user.get("is_admin", False):
-        st.write(f"**Debug MTD - Available columns:** {list(weekly_df.columns)}")
-        if config.KPI_COL_OWNER in weekly_df.columns:
-            mtd_cols.append(config.KPI_COL_OWNER)
-        else:
-            st.warning(f"Owner column '{config.KPI_COL_OWNER}' not found in data")
+    if user.get("is_admin", False) and config.KPI_COL_OWNER in weekly_df.columns:
+        mtd_cols.append(config.KPI_COL_OWNER)
     mtd_cols.extend([
         config.KPI_COL_TARGET,
         config.KPI_COL_TARGET_DESC,
@@ -538,13 +533,8 @@ kpi_cols = [
     config.KPI_COL_CODE,
     config.KPI_COL_NAME,
 ]
-# Debug: show what columns are available
-if user.get("is_admin", False):
-    st.write(f"**Debug All KPIs - Available columns:** {list(enriched.columns)}")
-    if config.KPI_COL_OWNER in enriched.columns:
-        kpi_cols.append(config.KPI_COL_OWNER)
-    else:
-        st.warning(f"Owner column '{config.KPI_COL_OWNER}' not found in data")
+if user.get("is_admin", False) and config.KPI_COL_OWNER in enriched.columns:
+    kpi_cols.append(config.KPI_COL_OWNER)
 kpi_cols.extend([
     config.KPI_COL_TARGET,
     config.KPI_COL_TARGET_DESC,
