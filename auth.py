@@ -54,6 +54,7 @@ def _build_user_lookup():
         name = u.get("name") or u.get("Name")
         department = u.get("department") or u.get("Department")
         role = u.get("role") or u.get("Role") or "User"  # Default role is "User"
+        password = u.get("password") or u.get("Password") or ""  # Get password from sheet
         
         if email:  # Only add if email exists
             # Parse multiple departments if comma-separated
@@ -71,7 +72,8 @@ def _build_user_lookup():
                 "name": str(name).strip() if name else "Unknown",
                 "departments": dept_list if dept_list else ["Unknown"],  # Store as list
                 "role": role.strip(),
-                "is_admin": is_admin
+                "is_admin": is_admin,
+                "password": str(password).strip()  # Store password
             })
     
     return {u["email"].lower(): u for u in normalized_users}
@@ -90,15 +92,28 @@ def _get_user_lookup(force_refresh=False):
     return _USER_LOOKUP
 
 
-def _validate_email(email: str, force_refresh=False) -> dict | None:
-    """Return user dict if email is recognised, else None.
+def _validate_credentials(email: str, password: str, force_refresh=False) -> dict | None:
+    """Validate email and password. Return user dict if credentials match, else None.
     
     Args:
-        email: Email address to validate
+        email: Email address
+        password: Password to validate
         force_refresh: If True, reload users from Google Sheet
+    
+    Returns:
+        User dict if credentials are valid, None otherwise
     """
     lookup = _get_user_lookup(force_refresh=force_refresh)
-    return lookup.get(email.strip().lower())
+    user = lookup.get(email.strip().lower())
+    
+    if user is None:
+        return None
+    
+    # Check if password matches (simple string comparison for now)
+    if user.get("password") != password:
+        return None
+    
+    return user
 
 
 def show_login() -> None:
@@ -108,6 +123,7 @@ def show_login() -> None:
 
     with st.form("login_form"):
         email = st.text_input("Work email address", placeholder="you@company.com")
+        password = st.text_input("Password", type="password", placeholder="Enter your password")
         submitted = st.form_submit_button("Sign in")
 
     if not submitted:
@@ -116,16 +132,20 @@ def show_login() -> None:
     if not email:
         st.error("Please enter your email address.")
         return
+    
+    if not password:
+        st.error("Please enter your password.")
+        return
 
-    # Try to validate email (with cache)
-    user = _validate_email(email)
+    # Try to validate credentials (with cache)
+    user = _validate_credentials(email, password)
     
     # If not found and cache exists, try force refresh in case users sheet was updated
     if user is None:
-        user = _validate_email(email, force_refresh=True)
+        user = _validate_credentials(email, password, force_refresh=True)
     
     if user is None:
-        st.error("Email not recognised. Contact your administrator.")
+        st.error("Invalid email or password.")
         return
 
     st.session_state.user = {
