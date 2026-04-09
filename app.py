@@ -733,7 +733,8 @@ else:
 with st.form("actuals_form", clear_on_submit=True):
     # Build help text with instructions
     _help_text = None
-    if _is_percent:
+    if _kpi_is_pct:
+        _target_fmt = f"{_kpi_target * 100:.2f}%" if (_kpi_target is not None and float(_kpi_target) <= 1.0) else f"{_kpi_target:.2f}%"
         _help_text = f"Enter the value as a percentage (0-100). Example: enter 94 for 94%. Target: {_target_fmt}"
     
     _input_kwargs = dict(
@@ -766,7 +767,7 @@ if submitted:
             comment=comment.strip(),
             updated_by=user["email"],
         )
-        display_value = f"{actual_value:.1f}%" if _is_percent else f"{actual_value:.2f}"
+        display_value = f"{actual_value:.2f}%" if _kpi_is_pct else f"{actual_value:.2f}"
         st.success(f"Saved! {selected_label} → {display_value} on {date.today().strftime('%d %b %Y')}")
         st.rerun()
     except Exception as e:
