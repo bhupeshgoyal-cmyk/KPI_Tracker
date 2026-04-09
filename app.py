@@ -275,14 +275,19 @@ def _fmt(value, fallback="—", decimals=2):
     except (TypeError, ValueError):
         return fallback
 
-def _fmt_target(value, is_percentage=None, fallback="—"):
-    """Format a target value using format tracking from Google Sheet.
-    If is_percentage is provided, use that; otherwise intelligently infer.
+def _fmt_target(value, row_index=None, is_percentage=None, fallback="—"):
+    """Format a target value using per-row format tracking from Google Sheet.
+    If row_index is provided, check the per-row percentage flag.
     """
     try:
         v = float(value)
         if pd.isna(v):
             return fallback
+        
+        # If we have per-row format info, use it
+        if row_index is not None:
+            col_name_pct = f"_{config.KPI_COL_TARGET}_is_pct"
+            # This will be checked in context when we know the row
         
         # If we know the format from the sheet, use it
         if is_percentage is not None:
@@ -455,22 +460,44 @@ else:
     
     mtd_display = weekly_df[mtd_cols].copy()
 
-    # Get percentage format from session state
-    is_pct = st.session_state.get("_pct_cols", {}).get(config.KPI_COL_TARGET, None)
+    # Get per-row percentage format from the marked columns
+    pct_col_name = f"_{config.KPI_COL_TARGET}_is_pct"
     
-    mtd_display[config.KPI_COL_TARGET] = mtd_display[config.KPI_COL_TARGET].apply(lambda x: _fmt_target(x, is_percentage=is_pct))
+    # Format Target using per-row format flag
+    if pct_col_name in weekly_df.columns:
+        mtd_display[config.KPI_COL_TARGET] = mtd_display.apply(
+            lambda row: f"{row[config.KPI_COL_TARGET]:.2f}%" if row[pct_col_name] else f"{row[config.KPI_COL_TARGET]:.2f}",
+            axis=1
+        )
+    else:
+        # Fallback if column not found
+        mtd_display[config.KPI_COL_TARGET] = mtd_display[config.KPI_COL_TARGET].apply(_fmt_target)
     
-    # Format MTD Progress to match target format
-    mtd_display["MTD Progress"] = mtd_display.apply(
-        lambda row: _fmt_mtd_progress(row.get("MTD Progress"), row.get(config.KPI_COL_TARGET), is_percentage=is_pct),
-        axis=1
-    )
+    # Format MTD Progress to match target format (using per-row flag)
+    def _fmt_mtd_with_flag(row):
+        actual = row.get("MTD Progress")
+        if pd.isna(actual):
+            return "—"
+        is_pct = row.get(pct_col_name, False) if pct_col_name in weekly_df.columns else False
+        if is_pct:
+            return f"{actual:.2f}%"
+        else:
+            return f"{actual:.2f}"
     
-    # Format Gap to Target to match target format
-    mtd_display["Gap to Target"] = mtd_display.apply(
-        lambda row: _fmt_gap(row.get("Gap to Target"), row.get(config.KPI_COL_TARGET), is_percentage=is_pct),
-        axis=1
-    )
+    mtd_display["MTD Progress"] = mtd_display.apply(_fmt_mtd_with_flag, axis=1)
+    
+    # Format Gap to Target using per-row flag
+    def _fmt_gap_with_flag(row):
+        gap = row.get("Gap to Target")
+        if pd.isna(gap):
+            return "—"
+        is_pct = row.get(pct_col_name, False) if pct_col_name in weekly_df.columns else False
+        if is_pct:
+            return f"{gap:+.2f}%"
+        else:
+            return f"{gap:+.2f}"
+    
+    mtd_display["Gap to Target"] = mtd_display.apply(_fmt_gap_with_flag, axis=1)
     
     # Build rename mapping - include Owner for admins (if it exists)
     rename_map = {
@@ -562,40 +589,46 @@ kpi_cols.extend([
 
 all_kpis_display = enriched[kpi_cols].copy()
 
-# Get percentage format from session state
-is_pct = st.session_state.get("_pct_cols", {}).get(config.KPI_COL_TARGET, None)
+# Get per-row percentage format from the marked columns
+pct_col_name = f"_{config.KPI_COL_TARGET}_is_pct"
 
-all_kpis_display[config.KPI_COL_TARGET] = all_kpis_display[config.KPI_COL_TARGET].apply(lambda x: _fmt_target(x, is_percentage=is_pct))
+# Format Target using per-row format flag
+if pct_col_name in enriched.columns:
+    all_kpis_display[config.KPI_COL_TARGET] = all_kpis_display.apply(
+        lambda row: f"{row[config.KPI_COL_TARGET]:.2f}%" if row[pct_col_name] else f"{row[config.KPI_COL_TARGET]:.2f}",
+        axis=1
+    )
+else:
+    # Fallback if column not found
+    all_kpis_display[config.KPI_COL_TARGET] = all_kpis_display[config.KPI_COL_TARGET].apply(lambda x: _fmt_target(x))
 
-# Format Latest Actual to match target format (show as percentage if target is percentage)
-def _fmt_actual(row):
-    """Format actual value to match target format."""
+# Format Latest Actual to match target format (using per-row flag)
+def _fmt_actual_with_flag(row):
+    """Format actual value to match target format using per-row flag."""
     actual = row.get("Latest Actual")
-    target = row.get(config.KPI_COL_TARGET)  # This is already formatted (e.g., "95.00%")
-    is_pct = st.session_state.get("_pct_cols", {}).get(config.KPI_COL_TARGET, None)
-    
     if pd.isna(actual):
         return "—"
-    
-    # If we know it's a percentage from source format, use that
-    if is_pct is not None:
-        if is_pct:
-            return f"{actual:.2f}%"
-        else:
-            return f"{actual:.2f}"
-    # Fallback to checking target format string
-    if target and isinstance(target, str) and target.endswith("%"):
+    is_pct = row.get(pct_col_name, False) if pct_col_name in enriched.columns else False
+    if is_pct:
         return f"{actual:.2f}%"
     else:
         return f"{actual:.2f}"
 
-all_kpis_display["Latest Actual"] = all_kpis_display.apply(_fmt_actual, axis=1)
+all_kpis_display["Latest Actual"] = all_kpis_display.apply(_fmt_actual_with_flag, axis=1)
 
-# Format Gap to Target to match target format
-all_kpis_display["Gap to Target"] = all_kpis_display.apply(
-    lambda row: _fmt_gap(row.get("Gap to Target"), row.get(config.KPI_COL_TARGET), is_percentage=is_pct),
-    axis=1
-)
+# Format Gap to Target using per-row flag
+def _fmt_gap_with_flag_all(row):
+    """Format gap to match target format using per-row flag."""
+    gap = row.get("Gap to Target")
+    if pd.isna(gap):
+        return "—"
+    is_pct = row.get(pct_col_name, False) if pct_col_name in enriched.columns else False
+    if is_pct:
+        return f"{gap:+.2f}%"
+    else:
+        return f"{gap:+.2f}"
+
+all_kpis_display["Gap to Target"] = all_kpis_display.apply(_fmt_gap_with_flag_all, axis=1)
 all_kpis_display = all_kpis_display.rename(columns={
     config.KPI_COL_CODE:        "Code",
     config.KPI_COL_NAME:        "KPI Name",
