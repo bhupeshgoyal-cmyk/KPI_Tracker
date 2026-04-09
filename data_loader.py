@@ -244,35 +244,63 @@ def append_actual(date: str, kpi_code: str, actual: float,
 # RAG status
 # =============================================================================
 
+def _to_ratio(thresh) -> float | None:
+    """Normalise a threshold to a 0–1 ratio.
+    - Values <= 2   → already a ratio (e.g. 0.95 or 1.05)
+    - Values 2–100  → percentage points (e.g. 95 → 0.95)
+    - Values > 100  → absolute; return as-is (handled separately)
+    """
+    if pd.isna(thresh):
+        return None
+    if thresh <= 2.0:
+        return float(thresh)
+    if thresh <= 100.0:
+        return thresh / 100.0
+    return float(thresh)   # absolute — caller must compare differently
+
+
 def compute_rag(actual, target, green, amber, red) -> str:
     """
-    Higher-is-better convention: actual >= green → Green, >= amber → Amber, >= red → Red, else Unknown.
-    Handles both decimal (0-1) and percentage (0-100) formats for thresholds.
-    Percentage thresholds (typically > 10) are divided by 100 to match decimal actuals.
+    Evaluate RAG by expressing actual as a fraction of target, then comparing
+    against normalised thresholds.  Works for both absolute KPIs (target=424 Cr,
+    actual=150) and ratio/percentage KPIs (target=1.0, actual=0.92).
+
+    Higher-is-better: actual/target >= green_ratio → Green, etc.
+    If any threshold > 100 it is treated as an absolute value and compared
+    directly against actual (for KPIs whose thresholds are hard numbers).
     """
     try:
         if pd.isna(actual):
             return "Unknown"
-        
-        # Normalize thresholds: if any threshold > 10, treat it as a percentage (e.g., 95)
-        # and convert to decimal (0-1) to match actual values stored as decimals.
-        # Values <= 10 are assumed to be already in decimal format (e.g., 0.95, 1.05)
-        if pd.notna(green) and green > 10:
-            green = green / 100.0
-        if pd.notna(amber) and amber > 10:
-            amber = amber / 100.0
-        if pd.notna(red) and red > 10:
-            red = red / 100.0
-        
-        # Check thresholds in order: Green > Amber > Red
-        if pd.notna(green) and actual >= green:
+
+        actual = float(actual)
+        g = _to_ratio(green)
+        a = _to_ratio(amber)
+        r = _to_ratio(red)
+
+        # Decide comparison mode based on thresholds
+        # If thresholds are absolute (>100), compare actual directly
+        thresholds_are_absolute = any(
+            pd.notna(t) and float(t) > 100
+            for t in [green, amber, red]
+            if pd.notna(t)
+        )
+
+        if thresholds_are_absolute:
+            # Direct absolute comparison (e.g. green=400, actual=150)
+            compare_val = actual
+        elif pd.notna(target) and float(target) != 0:
+            # Ratio comparison: how much of the target has been achieved?
+            compare_val = actual / float(target)
+        else:
+            compare_val = actual
+
+        if g is not None and compare_val >= g:
             return "Green"
-        if pd.notna(amber) and actual >= amber:
+        if a is not None and compare_val >= a:
             return "Amber"
-        if pd.notna(red) and actual >= red:
+        if r is not None and compare_val >= r:
             return "Red"
-        
-        # If no thresholds match, assume it's below all thresholds (worst case)
         return "Red"
     except Exception:
         return "Unknown"
