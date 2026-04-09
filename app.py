@@ -458,10 +458,12 @@ else:
         "Gap to Target",
     ])
     
-    mtd_display = weekly_df[mtd_cols].copy()
-
     # Get per-row percentage format from the marked columns
     pct_col_name = f"_{config.KPI_COL_TARGET}_is_pct"
+    if pct_col_name in weekly_df.columns:
+        mtd_cols.append(pct_col_name)
+    
+    mtd_display = weekly_df[mtd_cols].copy()
     
     # Format Target using per-row format flag
     if pct_col_name in weekly_df.columns:
@@ -498,6 +500,10 @@ else:
             return f"{gap:+.2f}"
     
     mtd_display["Gap to Target"] = mtd_display.apply(_fmt_gap_with_flag, axis=1)
+    
+    # Drop the percentage flag column before renaming/displaying
+    if pct_col_name in mtd_display.columns:
+        mtd_display = mtd_display.drop(columns=[pct_col_name])
     
     # Build rename mapping - include Owner for admins (if it exists)
     rename_map = {
@@ -587,6 +593,11 @@ kpi_cols.extend([
     "Gap to Target",
 ])
 
+# Get per-row percentage format from the marked columns
+pct_col_name = f"_{config.KPI_COL_TARGET}_is_pct"
+if pct_col_name in enriched.columns:
+    kpi_cols.append(pct_col_name)
+
 all_kpis_display = enriched[kpi_cols].copy()
 
 # Get per-row percentage format from the marked columns
@@ -629,6 +640,11 @@ def _fmt_gap_with_flag_all(row):
         return f"{gap:+.2f}"
 
 all_kpis_display["Gap to Target"] = all_kpis_display.apply(_fmt_gap_with_flag_all, axis=1)
+
+# Drop the percentage flag column before renaming/displaying
+if pct_col_name in all_kpis_display.columns:
+    all_kpis_display = all_kpis_display.drop(columns=[pct_col_name])
+
 all_kpis_display = all_kpis_display.rename(columns={
     config.KPI_COL_CODE:        "Code",
     config.KPI_COL_NAME:        "KPI Name",
