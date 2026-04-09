@@ -103,16 +103,37 @@ def _fmt(value, fallback="—", decimals=2):
         return fallback
 
 def _fmt_target(value, fallback="—"):
-    """Format a target value as a percentage string.
-    Values ≤ 1 are treated as decimals: 1.0 → '100%', 0.95 → '95%'.
-    Values > 1 are treated as already the percentage number: 95 → '95%', 100 → '100%'.
+    """Format a target value intelligently based on its range.
+    Decimal values (0-1): treated as percentages: 0.95 → '95%'
+    Values 1-100 with specific decimal patterns: treated as percentages: 95 → '95%', 95.5 → '95.5%'
+    Values > 100 or irregular decimals: treated as regular numbers: 500 → '500', 2.3 → '2.30'
     """
     try:
         v = float(value)
         if pd.isna(v):
             return fallback
-        pct = v * 100 if v <= 1.0 else v
-        return f"{int(pct)}%" if pct == int(pct) else f"{pct:.1f}%"
+        
+        # Decimal range: definitely a percentage (0.95 = 95%)
+        if v <= 1.0:
+            pct = v * 100
+            return f"{int(pct)}%" if pct == int(pct) else f"{pct:.1f}%"
+        
+        # Large values (>100): definitely not percentages
+        if v > 100:
+            return f"{int(v)}" if v == int(v) else f"{v:.2f}"
+        
+        # Range 1-100: could be percentage or regular number
+        # Treat as percentage if it's a whole number or has clean .5 or .X pattern
+        # For thresholds like 1.05 (105%), we show as 1.05 (not a percentage)
+        if v == int(v):
+            # Whole number in 1-100 range: treat as percentage
+            return f"{int(v)}%"
+        elif (v * 10) == int(v * 10):
+            # One decimal place (e.g., 95.5): treat as percentage
+            return f"{v:.1f}%"
+        else:
+            # Irregular decimal (e.g., 2.35, 1.05): treat as regular number
+            return f"{v:.2f}"
     except (TypeError, ValueError):
         return fallback
 

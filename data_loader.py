@@ -288,6 +288,9 @@ def compute_mtd(enriched_df: pd.DataFrame) -> pd.DataFrame:
       - MTD Progress  = latest reported value
       - Gap to Target = MTD Progress - Target
                         (positive = ahead, negative = behind)
+    
+    Handles format normalization: if actual is stored as percentage (0-100)
+    and target is decimal (0-1), normalizes actual to decimal before subtracting.
 
     Columns added: MTD Progress, Gap to Target.
     Non-weekly KPIs get NaN in these columns.
@@ -308,7 +311,10 @@ def compute_mtd(enriched_df: pd.DataFrame) -> pd.DataFrame:
 
     df.loc[is_weekly, "Gap to Target"] = df.loc[is_weekly].apply(
         lambda row: (
-            float(row["MTD Progress"]) - float(row[config.KPI_COL_TARGET])
+            _calculate_gap(
+                float(row["MTD Progress"]),
+                float(row[config.KPI_COL_TARGET])
+            )
             if pd.notna(row["MTD Progress"]) and pd.notna(row[config.KPI_COL_TARGET])
             else None
         ),
@@ -316,3 +322,23 @@ def compute_mtd(enriched_df: pd.DataFrame) -> pd.DataFrame:
     )
 
     return df
+
+
+def _calculate_gap(actual: float, target: float) -> float:
+    """
+    Calculate gap = actual - target, normalizing formats first.
+    
+    Strategy:
+    - If target <= 1.0 (decimal format), normalize actual to decimal if it's > 10
+    - If target > 10 (percentage format), normalize actual to percentage if it's <= 1.0
+    - Otherwise, use as-is (both are regular numbers)
+    """
+    # Detect target format and normalize actual to match
+    if target <= 1.0 and actual > 10:
+        # Target is decimal (0-1), actual is percentage (0-100) → normalize actual
+        actual = actual / 100.0
+    elif target > 10 and actual <= 1.0:
+        # Target is percentage (0-100), actual is decimal (0-1) → normalize actual
+        actual = actual * 100.0
+    
+    return actual - target
