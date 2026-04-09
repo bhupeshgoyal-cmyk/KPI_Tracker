@@ -53,6 +53,7 @@ def _build_user_lookup():
         email = u.get("email") or u.get("Email") or u.get(list(u.keys())[0])
         name = u.get("name") or u.get("Name")
         department = u.get("department") or u.get("Department")
+        role = u.get("role") or u.get("Role") or "User"  # Default role is "User"
         
         if email:  # Only add if email exists
             # Parse multiple departments if comma-separated
@@ -62,10 +63,15 @@ def _build_user_lookup():
                 # Split by comma if multiple departments, otherwise single department
                 dept_list = [d.strip() for d in dept_str.split(",") if d.strip()]
             
+            # Check if user is admin
+            is_admin = role.strip().lower() in ["admin", "administrator"]
+            
             normalized_users.append({
                 "email": str(email).strip(),
                 "name": str(name).strip() if name else "Unknown",
-                "departments": dept_list if dept_list else ["Unknown"]  # Store as list
+                "departments": dept_list if dept_list else ["Unknown"],  # Store as list
+                "role": role.strip(),
+                "is_admin": is_admin
             })
     
     return {u["email"].lower(): u for u in normalized_users}
@@ -127,6 +133,8 @@ def show_login() -> None:
         "name":        user["name"],
         "departments": user["departments"],  # Store as list
         "department":  user["departments"][0] if user["departments"] else "Unknown",  # Default to first
+        "is_admin":    user.get("is_admin", False),  # Store admin status
+        "role":        user.get("role", "User"),
     }
     st.rerun()
 

@@ -112,29 +112,42 @@ def _load_kpi_registry() -> pd.DataFrame:
 def load_available_months(department: str) -> list[str]:
     """
     Return months available for a department sorted in FY order.
+    If department is "All", returns all available months.
     Used to populate the sidebar month selector.
     """
     df = _load_kpi_registry()
     if df.empty or config.KPI_COL_MONTH not in df.columns:
         return []
 
-    dept_df = df[df[config.KPI_COL_DEPARTMENT] == department]
-    unique_months = dept_df[config.KPI_COL_MONTH].dropna().unique().tolist()
+    # If department is "All", don't filter by department
+    if department.upper() == "ALL":
+        unique_months = df[config.KPI_COL_MONTH].dropna().unique().tolist()
+    else:
+        dept_df = df[df[config.KPI_COL_DEPARTMENT] == department]
+        unique_months = dept_df[config.KPI_COL_MONTH].dropna().unique().tolist()
+    
     unique_months = [m for m in unique_months if m and m.lower() != "nan"]
     return sort_months_fy(unique_months)
 
 
 @st.cache_data(ttl=300, show_spinner="Loading KPIs…")
 def load_kpis(department: str, month: str) -> pd.DataFrame:
-    """Return KPIs for a given department and month."""
+    """Return KPIs for a given department and month.
+    
+    If department is "All", returns KPIs for all departments (for admin users).
+    """
     df = _load_kpi_registry()
     if df.empty:
         return df
 
-    mask = (
-        (df[config.KPI_COL_DEPARTMENT] == department) &
-        (df[config.KPI_COL_MONTH] == str(month).strip())
-    )
+    # If department is "All", don't filter by department
+    if department.upper() == "ALL":
+        mask = (df[config.KPI_COL_MONTH] == str(month).strip())
+    else:
+        mask = (
+            (df[config.KPI_COL_DEPARTMENT] == department) &
+            (df[config.KPI_COL_MONTH] == str(month).strip())
+        )
     result = df[mask].reset_index(drop=True)
     st.session_state["debug_kpis_loaded"] = len(result)
     return result

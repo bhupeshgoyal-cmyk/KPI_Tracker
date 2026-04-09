@@ -22,7 +22,11 @@ user = require_auth()
 
 # Initialize session state for department selection if not present
 if "selected_dept" not in st.session_state:
-    st.session_state.selected_dept = user["department"]
+    # For admins, default to "All"; for regular users, default to first department
+    if user.get("is_admin", False):
+        st.session_state.selected_dept = "All"
+    else:
+        st.session_state.selected_dept = user["department"]
 
 department = st.session_state.selected_dept
 
@@ -33,14 +37,25 @@ with st.sidebar:
     st.markdown(f"### {user['name']}")
     st.caption(user["email"])
     
-    # Department selector if user has multiple departments
+    # Show role badge if user is admin
+    if user.get("is_admin", False):
+        st.markdown("✅ **Admin**")
+    
+    # Department selector
     user_departments = user.get("departments", [user.get("department", "Unknown")])
-    if len(user_departments) > 1:
+    
+    # For admin users, add "All" option at the beginning
+    if user.get("is_admin", False):
+        dept_options = ["All"] + user_departments
+    else:
+        dept_options = user_departments
+    
+    if len(dept_options) > 1:
         st.caption("**Department:**")
         selected_dept = st.selectbox(
             "Select department",
-            options=user_departments,
-            index=user_departments.index(department) if department in user_departments else 0,
+            options=dept_options,
+            index=dept_options.index(department) if department in dept_options else 0,
             key="dept_selector",
             label_visibility="collapsed"
         )
