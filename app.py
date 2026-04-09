@@ -10,10 +10,110 @@ from ai_engine import generate_insights
 import config
 
 st.set_page_config(
-    page_title="KPI Dashboard",
-    page_icon="📊",
+    page_title="Stashfin | KPI Dashboard",
+    page_icon="💰",
     layout="wide",
 )
+
+# Stashfin Brand Colors and Custom Styling
+st.markdown("""
+<style>
+    /* Stashfin Brand Colors */
+    :root {
+        --stashfin-primary: #1A73E8;    /* Primary Blue */
+        --stashfin-accent: #34A853;     /* Success Green */
+        --stashfin-warning: #FBBC04;    /* Warning Yellow */
+        --stashfin-error: #EA4335;      /* Error Red */
+        --stashfin-dark: #202124;       /* Dark Gray */
+        --stashfin-light: #F8F9FA;      /* Light Gray */
+    }
+    
+    /* Main container styling */
+    .main {
+        background-color: #F8F9FA;
+    }
+    
+    /* Title styling */
+    h1 {
+        color: #1A73E8 !important;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+    }
+    
+    /* Subheader styling */
+    h2 {
+        color: #202124 !important;
+        font-weight: 600;
+    }
+    
+    /* Sidebar styling */
+    [data-testid="sidebar"] {
+        background-color: #FFFFFF;
+        border-right: 1px solid #E8EAED;
+    }
+    
+    /* Metric styling */
+    [data-testid="metric-container"] {
+        background-color: #FFFFFF;
+        border-radius: 8px;
+        border: 1px solid #E8EAED;
+        padding: 1.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    
+    /* Button styling */
+    button {
+        background-color: #1A73E8 !important;
+        color: white !important;
+        border-radius: 4px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    
+    button:hover {
+        background-color: #155FD0 !important;
+        box-shadow: 0 1px 3px rgba(26,115,232,0.3);
+    }
+    
+    /* Divider styling */
+    hr {
+        border-top: 1px solid #E8EAED !important;
+        margin: 2rem 0 !important;
+    }
+    
+    /* Badge styling */
+    .badge {
+        background-color: #34A853;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    
+    /* RAG Status Colors */
+    .rag-green {
+        color: #34A853 !important;
+        font-weight: 600;
+    }
+    
+    .rag-amber {
+        color: #FBBC04 !important;
+        font-weight: 600;
+    }
+    
+    .rag-red {
+        color: #EA4335 !important;
+        font-weight: 600;
+    }
+    
+    /* Data table styling */
+    [data-testid="dataframe"] {
+        border-radius: 8px;
+        overflow: hidden;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # =============================================================================
 # Auth
@@ -221,8 +321,19 @@ def _render_insight(text: str) -> None:
 # =============================================================================
 # Header
 # =============================================================================
-st.title("📊 KPI Dashboard")
-st.markdown(f"**{department}** · {selected_month}")
+st.markdown(
+    '<div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem;">'
+    '<div style="background: linear-gradient(135deg, #1A73E8 0%, #155FD0 100%); padding: 0.75rem 1.5rem; border-radius: 8px;">'
+    '<span style="font-size: 1.5rem; font-weight: 700; color: white;">💰 STASHFIN</span>'
+    '</div>'
+    '<div>'
+    '<h1 style="margin: 0; font-size: 2rem; color: #1A73E8;">KPI Dashboard</h1>'
+    '<p style="margin: 0.25rem 0 0 0; color: #5F6368; font-size: 0.9rem;">Track, Analyze, Optimize</p>'
+    '</div>'
+    '</div>',
+    unsafe_allow_html=True
+)
+st.markdown(f"<p style='color: #5F6368; font-size: 0.95rem; margin-bottom: 1rem;'><strong style='color: #1A73E8;'>{department}</strong> · {selected_month}</p>", unsafe_allow_html=True)
 st.divider()
 
 # Debug info (collapsed by default)
@@ -270,7 +381,7 @@ def _fmt_gap(gap, target_fmt):
 # =============================================================================
 # Section 1: MTD Progress — Weekly Tracked KPIs
 # =============================================================================
-st.subheader("📈 MTD Progress — Weekly Tracked KPIs")
+st.markdown("<h2 style='color: #1A73E8; margin-bottom: 1rem;'>📈 MTD Progress — Weekly Tracked KPIs</h2>", unsafe_allow_html=True)
 
 weekly_df = enriched[
     enriched.get(config.KPI_COL_WEEKLY_TRACKED, pd.Series([""] * len(enriched))).str.upper() == "YES"
@@ -322,14 +433,50 @@ st.divider()
 # =============================================================================
 # Section 2: All KPIs
 # =============================================================================
-st.subheader("📋 All KPIs")
+st.markdown("<h2 style='color: #1A73E8; margin-bottom: 1rem;'>📋 All KPIs</h2>", unsafe_allow_html=True)
 
 raw_rag = enriched["RAG Status"]
 b1, b2, b3, b4 = st.columns(4)
-b1.metric("Total",    len(enriched))
-b2.metric("🟢 Green", int((raw_rag == "Green").sum()))
-b3.metric("🟡 Amber", int((raw_rag == "Amber").sum()))
-b4.metric("🔴 Red",   int((raw_rag == "Red").sum()))
+
+# Custom metric styling with Stashfin colors
+with b1:
+    st.markdown(
+        f"<div style='background: linear-gradient(135deg, #F8F9FA 0%, #FFFFFF 100%); border: 1px solid #E8EAED; border-radius: 8px; padding: 1.5rem; text-align: center;'>"
+        f"<p style='color: #5F6368; font-size: 0.85rem; margin: 0; margin-bottom: 0.5rem;'>Total</p>"
+        f"<p style='color: #1A73E8; font-size: 2rem; font-weight: 700; margin: 0;'>{len(enriched)}</p>"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+
+with b2:
+    green_count = int((raw_rag == "Green").sum())
+    st.markdown(
+        f"<div style='background: linear-gradient(135deg, #F8F9FA 0%, #FFFFFF 100%); border: 1px solid #34A853; border-radius: 8px; padding: 1.5rem; text-align: center;'>"
+        f"<p style='color: #5F6368; font-size: 0.85rem; margin: 0; margin-bottom: 0.5rem;'>🟢 Green</p>"
+        f"<p style='color: #34A853; font-size: 2rem; font-weight: 700; margin: 0;'>{green_count}</p>"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+
+with b3:
+    amber_count = int((raw_rag == "Amber").sum())
+    st.markdown(
+        f"<div style='background: linear-gradient(135deg, #F8F9FA 0%, #FFFFFF 100%); border: 1px solid #FBBC04; border-radius: 8px; padding: 1.5rem; text-align: center;'>"
+        f"<p style='color: #5F6368; font-size: 0.85rem; margin: 0; margin-bottom: 0.5rem;'>🟡 Amber</p>"
+        f"<p style='color: #FBBC04; font-size: 2rem; font-weight: 700; margin: 0;'>{amber_count}</p>"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+
+with b4:
+    red_count = int((raw_rag == "Red").sum())
+    st.markdown(
+        f"<div style='background: linear-gradient(135deg, #F8F9FA 0%, #FFFFFF 100%); border: 1px solid #EA4335; border-radius: 8px; padding: 1.5rem; text-align: center;'>"
+        f"<p style='color: #5F6368; font-size: 0.85rem; margin: 0; margin-bottom: 0.5rem;'>🔴 Red</p>"
+        f"<p style='color: #EA4335; font-size: 2rem; font-weight: 700; margin: 0;'>{red_count}</p>"
+        f"</div>",
+        unsafe_allow_html=True
+    )
 
 st.write("")
 
@@ -390,7 +537,7 @@ st.divider()
 # =============================================================================
 # Input Form
 # =============================================================================
-st.subheader("📝 Submit Actual")
+st.markdown("<h2 style='color: #1A73E8; margin-bottom: 1rem;'>📝 Submit Actual</h2>", unsafe_allow_html=True)
 
 kpi_options = {
     f"{r[config.KPI_COL_NAME]} ({r[config.KPI_COL_CODE]})": r[config.KPI_COL_CODE]
@@ -540,7 +687,7 @@ else:
 # =============================================================================
 # AI Insights
 # =============================================================================
-st.subheader("🧠 Performance Summary")
+st.markdown("<h2 style='color: #1A73E8; margin-bottom: 1rem;'>🧠 Performance Summary</h2>", unsafe_allow_html=True)
 
 if st.button("Generate Insight", type="primary"):
     with st.spinner("Analysing performance data…"):
