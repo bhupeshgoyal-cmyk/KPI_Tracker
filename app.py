@@ -676,23 +676,20 @@ selected_label = st.selectbox("Select KPI", options=list(kpi_options.keys()))
 selected_code  = kpi_options[selected_label]
 
 # Determine input format from the selected KPI's target
-_sel_kpi_row = kpis_df[kpis_df[config.KPI_COL_CODE] == selected_code]
-_kpi_target  = _sel_kpi_row[config.KPI_COL_TARGET].iloc[0] if not _sel_kpi_row.empty else None
-_target_fmt  = _fmt_target(_kpi_target)          # e.g. "95%" or "—"
-_is_percent  = _target_fmt.endswith("%")
+_sel_kpi_row  = kpis_df[kpis_df[config.KPI_COL_CODE] == selected_code]
+_kpi_target   = _sel_kpi_row[config.KPI_COL_TARGET].iloc[0] if not _sel_kpi_row.empty else None
+_pct_flag_col = f"_{config.KPI_COL_TARGET}_is_pct"
+_kpi_is_pct   = bool(_sel_kpi_row[_pct_flag_col].iloc[0]) if (not _sel_kpi_row.empty and _pct_flag_col in _sel_kpi_row.columns) else False
 
 _convert_pct = False   # whether to divide input by 100 before saving
-if _is_percent:
+if _kpi_is_pct:
     try:
         _t = float(_kpi_target)
-        # Check if target is decimal (0-1 range) OR if green threshold is decimal (0-2 range)
-        # This handles both cases: target=0.95 or target=100 with green=1.05
-        _green = _sel_kpi_row[config.KPI_COL_GREEN].iloc[0] if not _sel_kpi_row.empty else None
-        _pct_decimal = (_t <= 1.0) or (pd.notna(_green) and _green <= 10)
+        _pct_decimal = _t <= 1.0   # decimal form: target stored as 0-1 (e.g. 0.95 = 95%)
     except (TypeError, ValueError):
         _pct_decimal = False
     if _pct_decimal:
-        # Accept human-friendly percent input (e.g. 94 or 95), convert on save
+        # Accept human-friendly percent input (e.g. 94), convert to decimal on save
         _actual_label  = "Actual value (%)"
         _actual_step   = 0.1
         _actual_format = "%.1f"
@@ -722,16 +719,12 @@ if not kpi_history.empty:
     with st.container(border=True):
         st.caption(f"Last submission — {last_date}")
         lc1, lc2 = st.columns(2)
-        # Format Previous Actual to match target format
-        if _is_percent and last[config.ACTUAL_COL_ACTUAL] < 10:
-            # Decimal percentage format
-            prev_actual_display = f"{last[config.ACTUAL_COL_ACTUAL]*100:.1f}%"
-        elif _is_percent:
-            # Regular percentage
-            prev_actual_display = f"{last[config.ACTUAL_COL_ACTUAL]:.1f}%"
+        # Format Previous Actual in the same unit as the target column
+        _v = last[config.ACTUAL_COL_ACTUAL]
+        if _kpi_is_pct:
+            prev_actual_display = f"{_v * 100:.2f}%" if _v <= 1.0 else f"{_v:.2f}%"
         else:
-            # Regular numeric
-            prev_actual_display = f"{last[config.ACTUAL_COL_ACTUAL]:.2f}"
+            prev_actual_display = f"{_v:.2f}"
         lc1.metric("Previous Actual", prev_actual_display)
         lc2.markdown(f"**Comment**\n\n{last_comment}")
 else:
