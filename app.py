@@ -104,8 +104,8 @@ def _fmt(value, fallback="—", decimals=2):
 
 def _fmt_target(value, fallback="—"):
     """Format a target value intelligently based on its range.
-    Decimal values (0-1): treated as percentages: 0.95 → '95%'
-    Values 1-100 with specific decimal patterns: treated as percentages: 95 → '95%', 95.5 → '95.5%'
+    Decimal values (0-1): treated as percentages: 0.95 → '95.00%'
+    Values 1-100 with specific decimal patterns: treated as percentages: 95 → '95.00%', 99.95 → '99.95%'
     Values > 100 or irregular decimals: treated as regular numbers: 500 → '500', 2.3 → '2.30'
     """
     try:
@@ -116,21 +116,21 @@ def _fmt_target(value, fallback="—"):
         # Decimal range: definitely a percentage (0.95 = 95%)
         if v <= 1.0:
             pct = v * 100
-            return f"{int(pct)}%" if pct == int(pct) else f"{pct:.1f}%"
+            return f"{int(pct)}.00%" if pct == int(pct) else f"{pct:.2f}%"
         
         # Large values (>100): definitely not percentages
         if v > 100:
             return f"{int(v)}" if v == int(v) else f"{v:.2f}"
         
         # Range 1-100: could be percentage or regular number
-        # Treat as percentage if it's a whole number or has clean .5 or .X pattern
+        # Treat as percentage if it's a whole number or has clean decimal pattern
         # For thresholds like 1.05 (105%), we show as 1.05 (not a percentage)
         if v == int(v):
             # Whole number in 1-100 range: treat as percentage
-            return f"{int(v)}%"
+            return f"{int(v)}.00%"
         elif (v * 10) == int(v * 10):
-            # One decimal place (e.g., 95.5): treat as percentage
-            return f"{v:.1f}%"
+            # One decimal place (e.g., 95.5): treat as percentage with 2 decimals
+            return f"{v:.2f}%"
         else:
             # Irregular decimal (e.g., 2.35, 1.05): treat as regular number
             return f"{v:.2f}"
@@ -203,29 +203,29 @@ with st.expander("🔍 Debug info", expanded=False):
 # =============================================================================
 
 def _fmt_mtd_progress(actual, target_fmt):
-    """Format MTD Progress to match target format."""
+    """Format MTD Progress to match target format with 2 decimal places for percentages."""
     if pd.isna(actual):
         return "—"
     # If target is percentage format, show as percentage
     if target_fmt and isinstance(target_fmt, str) and target_fmt.endswith("%"):
         # If actual is < 10, assume decimal format (0.94), convert to percentage
         if actual < 10:
-            return f"{actual*100:.1f}%"
+            return f"{actual*100:.2f}%"
         else:
-            return f"{actual:.1f}%"
+            return f"{actual:.2f}%"
     else:
         return f"{actual:.2f}"
 
 def _fmt_gap(gap, target_fmt):
-    """Format gap to match target format."""
+    """Format gap to match target format with 2 decimal places for percentages."""
     if pd.isna(gap):
         return "—"
     # If target is percentage format, show gap as percentage
     if target_fmt and isinstance(target_fmt, str) and target_fmt.endswith("%"):
         if abs(gap) < 10:
-            return f"{gap*100:+.1f}%"
+            return f"{gap*100:+.2f}%"
         else:
-            return f"{gap:+.1f}%"
+            return f"{gap:+.2f}%"
     else:
         return f"{gap:+.2f}"
 
@@ -301,6 +301,7 @@ all_kpis_display = enriched[[
     config.KPI_COL_TARGET,
     config.KPI_COL_TARGET_DESC,
     "Latest Actual",
+    "Gap to Target",
 ]].copy()
 
 all_kpis_display[config.KPI_COL_TARGET] = all_kpis_display[config.KPI_COL_TARGET].apply(_fmt_target)
@@ -309,7 +310,7 @@ all_kpis_display[config.KPI_COL_TARGET] = all_kpis_display[config.KPI_COL_TARGET
 def _fmt_actual(row):
     """Format actual value to match target format."""
     actual = row.get("Latest Actual")
-    target = row.get(config.KPI_COL_TARGET)  # This is already formatted (e.g., "95%")
+    target = row.get(config.KPI_COL_TARGET)  # This is already formatted (e.g., "95.00%")
     
     if pd.isna(actual):
         return "—"
@@ -318,15 +319,21 @@ def _fmt_actual(row):
     if target and isinstance(target, str) and target.endswith("%"):
         # If actual is < 10, it's likely a decimal (0.94), convert to percentage
         if actual < 10:
-            return f"{actual*100:.1f}%"
+            return f"{actual*100:.2f}%"
         else:
             # Already in percentage format (94), just add %
-            return f"{actual:.1f}%"
+            return f"{actual:.2f}%"
     else:
         # Regular numeric format
         return f"{actual:.2f}"
 
 all_kpis_display["Latest Actual"] = all_kpis_display.apply(_fmt_actual, axis=1)
+
+# Format Gap to Target to match target format
+all_kpis_display["Gap to Target"] = all_kpis_display.apply(
+    lambda row: _fmt_gap(row.get("Gap to Target"), row.get(config.KPI_COL_TARGET)),
+    axis=1
+)
 all_kpis_display = all_kpis_display.rename(columns={
     config.KPI_COL_CODE:        "Code",
     config.KPI_COL_NAME:        "KPI Name",
