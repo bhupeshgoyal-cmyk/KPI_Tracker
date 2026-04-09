@@ -18,9 +18,12 @@ def get_google_creds_dict() -> dict | None:
     return None
 
 # Sheet tab names
-KPI_REGISTRY_TAB = "KPI Registry"
-ACTUALS_TAB      = "Actuals"
-USERS_TAB        = "Users"
+KPI_REGISTRY_TAB  = "KPI Registry"
+ACTUALS_TAB       = "Actuals"
+USERS_TAB         = "Users"
+INSIGHTS_LOG_TAB  = "Insights Log"
+
+INSIGHTS_WEEKLY_CAP = 2
 
 # Column names — Users sheet
 USER_COL_EMAIL      = "Email"

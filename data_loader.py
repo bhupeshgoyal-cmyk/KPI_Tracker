@@ -193,6 +193,41 @@ def load_actuals(department: str, month: str) -> pd.DataFrame:
     return result
 
 
+def get_weekly_insight_count(department: str) -> int:
+    """Return how many insights have been generated for this department in the current ISO week."""
+    from datetime import date as _date
+    try:
+        ws = _get_sheet(config.INSIGHTS_LOG_TAB)
+        records = ws.get_all_records()
+        if not records:
+            return 0
+        today = _date.today()
+        iso_week = today.isocalendar()[1]
+        iso_year = today.isocalendar()[0]
+        return sum(
+            1 for r in records
+            if str(r.get("Department", "")).strip() == department
+            and int(r.get("Week", 0)) == iso_week
+            and int(r.get("Year", 0)) == iso_year
+        )
+    except Exception:
+        return 0  # fail open — don't block insights if sheet missing
+
+
+def log_insight_usage(department: str, user_email: str) -> None:
+    """Append one usage record to the Insights Log sheet."""
+    from datetime import date as _date, datetime as _dt
+    try:
+        today = _date.today()
+        iso = today.isocalendar()
+        _get_sheet(config.INSIGHTS_LOG_TAB).append_row(
+            [_dt.now().strftime("%Y-%m-%d %H:%M:%S"), department, user_email, iso[1], iso[0]],
+            value_input_option="USER_ENTERED",
+        )
+    except Exception:
+        pass  # non-critical — don't crash if logging fails
+
+
 def append_actual(date: str, kpi_code: str, actual: float,
                   comment: str, updated_by: str) -> None:
     """Append a row to Actuals and clear caches."""

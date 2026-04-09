@@ -5,6 +5,7 @@ from auth import require_auth, logout
 from data_loader import (
     load_kpis, load_actuals, load_available_months,
     enrich_with_rag, compute_mtd, append_actual, parse_month,
+    get_weekly_insight_count, log_insight_usage,
 )
 from ai_engine import generate_insights
 import config
@@ -842,9 +843,22 @@ else:
 # =============================================================================
 st.markdown("<h2 style='color: #1A73E8; margin-bottom: 1rem;'>🧠 Performance Summary</h2>", unsafe_allow_html=True)
 
-if st.button("Generate Insight", type="primary"):
-    with st.spinner("Analysing performance data…"):
-        st.session_state["insight"] = generate_insights(department, enriched)
+_insight_used  = get_weekly_insight_count(department)
+_insight_left  = max(0, config.INSIGHTS_WEEKLY_CAP - _insight_used)
+
+if _insight_left > 0:
+    st.caption(f"✨ {_insight_left} of {config.INSIGHTS_WEEKLY_CAP} insights remaining this week")
+    if st.button("Generate Insight", type="primary"):
+        with st.spinner("Crunching the numbers… 🔍"):
+            st.session_state["insight"] = generate_insights(department, enriched)
+            log_insight_usage(department, user["email"])
+            st.rerun()
+else:
+    st.info(
+        "🎯 You've used both insights for this week — great engagement! "
+        "Your next insights unlock on Monday. "
+        "In the meantime, keep submitting actuals and comments for a richer briefing next time. 💪"
+    )
 
 if "insight" in st.session_state:
     _render_insight(st.session_state["insight"])

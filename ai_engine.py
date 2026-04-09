@@ -1,203 +1,93 @@
 import pandas as pd
 from openai import OpenAI
 import config
-from datetime import datetime, date
-import requests
+from datetime import date
 
 # =============================================================================
 # OpenAI Client Setup
 # =============================================================================
 _client = OpenAI(api_key=config.OPENAI_API_KEY)
 
-
-# =============================================================================
-# Context helpers
-# =============================================================================
-
-def _get_greeting_context() -> str:
-    """Generate contextual greeting based on day of week and time."""
-    now = datetime.now()
-    day_name = now.strftime("%A")
-    hour = now.hour
-
-    greeting = f"Good {('morning' if hour < 12 else 'afternoon' if hour < 17 else 'evening')}."
-
-    # Add day-specific context
-    if day_name == "Monday":
-        greeting += " Hope you had a restful weekend."
-    elif day_name == "Friday":
-        greeting += " Great work this week — let's finish strong."
-
-    return greeting
-
-
-def _get_weather_context() -> str:
-    """Try to get weather context for Delhi (optional/non-critical)."""
-    try:
-        # Using Open-Meteo API (free, no key required)
-        # Delhi coordinates
-        response = requests.get(
-            "https://api.open-meteo.com/v1/forecast",
-            params={
-                "latitude": 28.7041,
-                "longitude": 77.1025,
-                "current": "temperature_2m,weather_code,relative_humidity_2m",
-                "timezone": "Asia/Kolkata"
-            },
-            timeout=3
-        )
-        if response.status_code == 200:
-            data = response.json()
-            current = data.get("current", {})
-            temp = current.get("temperature_2m")
-            humidity = current.get("relative_humidity_2m")
-
-            if temp is not None:
-                # Interpret weather code
-                weather_code = current.get("weather_code", 0)
-                conditions = {
-                    0: "Clear",
-                    1: "Partly cloudy",
-                    2: "Overcast",
-                    3: "Overcast",
-                    45: "Foggy",
-                    48: "Foggy",
-                    51: "Light drizzle",
-                    61: "Light rain",
-                    80: "Showers",
-                    95: "Thunderstorm"
-                }
-                condition = conditions.get(weather_code, "Variable conditions")
-                return f"In Delhi, it's {temp}°C and {condition}."
-    except Exception:
-        pass
-
-    return ""
-
-
-def _build_context_header() -> str:
-    """Build a brief context header for the briefing."""
-    greeting = _get_greeting_context()
-    weather = _get_weather_context()
-
-    header = greeting
-    if weather:
-        header += f" {weather}"
-
-    header += " Here's your KPI briefing."
-    return header
+# Lean system prompt — instructs tone and structure without wasting tokens
+_SYSTEM_PROMPT = (
+    "You are an energetic, straight-talking performance coach briefing a Head of Department. "
+    "Be sharp, specific, and motivating — never vague. Use 🟢🟡🔴 to signal KPI health inline. "
+    "Write exactly three labelled paragraphs (2-3 sentences each):\n"
+    "SITUATION: What the numbers actually show — no fluff.\n"
+    "SCRUTINY: Do the comments explain the gaps? Call out weak excuses.\n"
+    "ACTION: Concrete improvement steps with clear ownership and urgency.\n"
+    "End with one punchy motivational line. Max 180 words total."
+)
 
 
 # =============================================================================
-# Prompt builder
+# Prompt builder — abbreviated field names to minimise input tokens
 # =============================================================================
 
 def _build_kpi_block(df: pd.DataFrame) -> str:
-    """Build a structured KPI context block for the prompt."""
+    """Compact KPI summary — short field labels to reduce token count."""
     lines = []
     for _, row in df.iterrows():
-        name        = row.get(config.KPI_COL_NAME, "Unknown")
-        target      = row.get(config.KPI_COL_TARGET)
-        target_desc = str(row.get(config.KPI_COL_TARGET_DESC, "") or "").strip()
-        mtd         = row.get("MTD Progress")
-        gap         = row.get("Gap to Target")
-        actual      = row.get("Latest Actual")
-        comment     = str(row.get("Latest Comment", "") or "").strip()
-        rag         = row.get("RAG Status", "Unknown")
-        weekly      = str(row.get(config.KPI_COL_WEEKLY_TRACKED, "")).strip().upper()
+        name    = row.get(config.KPI_COL_NAME, "?")
+        target  = row.get(config.KPI_COL_TARGET)
+        actual  = row.get("Latest Actual")
+        mtd     = row.get("MTD Progress")
+        gap     = row.get("Gap to Target")
+        comment = str(row.get("Latest Comment", "") or "").strip()
+        rag     = row.get("RAG Status", "?")
+        weekly  = str(row.get(config.KPI_COL_WEEKLY_TRACKED, "")).strip().upper()
 
-        target_str = f"{target:.2f}" if pd.notna(target) else "—"
-        actual_str = f"{actual:.2f}" if pd.notna(actual) else "No data"
-
-        line = f"- {name} | Target: {target_str}"
-        if target_desc:
-            line += f" ({target_desc})"
-        line += f" | Status: {rag}"
+        t_str = f"{target:.2f}" if pd.notna(target) else "—"
+        rag_icon = {"Green": "🟢", "Amber": "🟡", "Red": "🔴"}.get(rag, "⚪")
 
         if weekly == "YES" and pd.notna(mtd):
-            gap_str = f"{gap:+.2f}" if pd.notna(gap) else "—"
-            line += f" | MTD Progress: {mtd:.2f} | Gap to Target: {gap_str}"
+            g_str = f"{gap:+.2f}" if pd.notna(gap) else "—"
+            line = f"{rag_icon} {name} | T:{t_str} MTD:{mtd:.2f} GAP:{g_str}"
         else:
-            line += f" | Latest Actual: {actual_str}"
+            a_str = f"{actual:.2f}" if pd.notna(actual) else "no data"
+            line = f"{rag_icon} {name} | T:{t_str} A:{a_str}"
 
         if comment:
-            line += f'\n  Comment: "{comment}"'
-
+            line += f' | "{comment}"'
         lines.append(line)
 
     return "\n".join(lines)
 
 
-_SYSTEM_PROMPT = """\
-You are a business performance reviewer briefing a senior executive.
-Write in tight, direct prose — no filler, no bullet-point padding.
-Every sentence must carry information.
-
-For each KPI assess:
-1. Is it on track to meet its target? State clearly.
-2. Is the gap (if any) recoverable this month? Be specific.
-3. Does the HoD comment credibly explain the result? If not, say so.
-4. What specific action should be taken and who owns it?
-
-If all KPIs are on track, say so in one sentence and stop.
-
-Output three sections — each a short paragraph, no headers needed:
-  SITUATION: What the numbers actually show.
-  SCRUTINY: Whether the explanations hold up.
-  ACTION: Specific next steps with clear ownership.
-"""
-
-
-def _build_prompt(department: str, kpi_block: str) -> str:
-    context_header = _build_context_header()
-    return (
-        f"{context_header}\n\n"
-        f"Department: {department}\n"
-        f"Date: {date.today().strftime('%d %B %Y')}\n\n"
-        f"KPI Performance:\n{kpi_block}\n\n"
-        "Provide your assessment."
-    )
-
-
-# =============================================================================
-# Public API
-# =============================================================================
-
 def generate_insights(department: str, enriched_df: pd.DataFrame) -> str:
     """
-    Generate an executive AI narrative for a department's KPI data.
-    Never raises — returns an error string on failure so the UI stays safe.
+    Generate a concise, engaging executive narrative for a department's KPIs.
+    Never raises — returns a safe error string on failure.
     """
     if enriched_df.empty:
         return "No KPI data available for this department."
 
     kpi_block = _build_kpi_block(enriched_df)
-    prompt    = _build_prompt(department, kpi_block)
+    user_msg  = (
+        f"Dept: {department} | {date.today().strftime('%d %b %Y')}\n"
+        f"{kpi_block}"
+    )
 
     try:
         response = _client.chat.completions.create(
             model=config.OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user",   "content": prompt},
+                {"role": "user",   "content": user_msg},
             ],
-            temperature=0.4,
-            max_tokens=800,
+            temperature=0.6,
+            max_tokens=350,
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
         error_str = str(e)
 
-        if "429" in error_str or "quota" in error_str.lower() or "rate_limit" in error_str.lower():
+        if "429" in error_str or "rate_limit" in error_str.lower():
             return (
-                "📊 **Insights Generation Paused** — API rate limit reached.\n\n"
-                "Please wait a moment before generating insights again."
+                "📊 **Insights paused** — rate limit hit. Wait a moment and try again."
             )
-
-        if "401" in error_str or "authentication" in error_str.lower() or "invalid_api_key" in error_str.lower():
+        if "401" in error_str or "invalid_api_key" in error_str.lower():
             return (
-                "❌ **Authentication Error** — Invalid or missing API key.\n\n"
-                "Please check your OPENAI_API_KEY configuration."
+                "❌ **Auth error** — check your OPENAI_API_KEY in Streamlit secrets."
             )
-
         return f"⚠️ Could not generate insights: {e}"
