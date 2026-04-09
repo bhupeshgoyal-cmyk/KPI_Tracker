@@ -11,13 +11,23 @@ import config
 
 st.set_page_config(
     page_title="Stashfin | KPI Dashboard",
-    page_icon="💰",
+    page_icon="�",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 # Stashfin Brand Colors and Custom Styling
 st.markdown("""
 <style>
+    /* Hide Streamlit share button and toolbar */
+    [data-testid="toolbarButtonContainer"] {
+        display: none !important;
+    }
+    
+    .stApp [data-testid="baseButton-secondary"] {
+        display: none !important;
+    }
+    
     /* Stashfin Brand Colors */
     :root {
         --stashfin-primary: #1A73E8;    /* Primary Blue */
@@ -323,8 +333,9 @@ def _render_insight(text: str) -> None:
 # =============================================================================
 st.markdown(
     '<div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem;">'
-    '<div style="background: linear-gradient(135deg, #1A73E8 0%, #155FD0 100%); padding: 0.75rem 1.5rem; border-radius: 8px;">'
-    '<span style="font-size: 1.5rem; font-weight: 700; color: white;">💰 STASHFIN</span>'
+    '<div style="background: linear-gradient(135deg, #1A73E8 0%, #155FD0 100%); padding: 0.75rem 1.5rem; border-radius: 8px; display: flex; align-items: center; gap: 0.5rem;">'
+    '<img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHJ4PSI0IiBmaWxsPSJ3aGl0ZSIvPjwvc3ZnPg==" style="width: 24px; height: 24px;"/>'
+    '<span style="font-size: 1.5rem; font-weight: 700; color: white;">STASHFIN</span>'
     '</div>'
     '<div>'
     '<h1 style="margin: 0; font-size: 2rem; color: #1A73E8;">KPI Dashboard</h1>'
