@@ -275,17 +275,23 @@ def _fmt(value, fallback="—", decimals=2):
     except (TypeError, ValueError):
         return fallback
 
-def _fmt_target(value, fallback="—"):
-    """Format a target value intelligently based on its range.
-    Decimal values (0-1): treated as percentages: 0.95 → '95.00%'
-    Values 1-100 with specific decimal patterns: treated as percentages: 95 → '95.00%', 99.95 → '99.95%'
-    Values > 100 or irregular decimals: treated as regular numbers: 500 → '500', 2.3 → '2.30'
+def _fmt_target(value, is_percentage=None, fallback="—"):
+    """Format a target value using format tracking from Google Sheet.
+    If is_percentage is provided, use that; otherwise intelligently infer.
     """
     try:
         v = float(value)
         if pd.isna(v):
             return fallback
         
+        # If we know the format from the sheet, use it
+        if is_percentage is not None:
+            if is_percentage:
+                return f"{v:.2f}%"
+            else:
+                return f"{v:.2f}"
+        
+        # Fallback to intelligent detection
         # Decimal range: definitely a percentage (0.95 = 95%)
         if v <= 1.0:
             pct = v * 100
@@ -297,15 +303,11 @@ def _fmt_target(value, fallback="—"):
         
         # Range 1-100: could be percentage or regular number
         # Treat as percentage if it's a whole number or has clean decimal pattern
-        # For thresholds like 1.05 (105%), we show as 1.05 (not a percentage)
         if v == int(v):
-            # Whole number in 1-100 range: treat as percentage
             return f"{int(v)}.00%"
         elif (v * 10) == int(v * 10):
-            # One decimal place (e.g., 95.5): treat as percentage with 2 decimals
             return f"{v:.2f}%"
         else:
-            # Irregular decimal (e.g., 2.35, 1.05): treat as regular number
             return f"{v:.2f}"
     except (TypeError, ValueError):
         return fallback
@@ -387,30 +389,35 @@ with st.expander("🔍 Debug info", expanded=False):
 # MTD formatting helpers
 # =============================================================================
 
-def _fmt_mtd_progress(actual, target_fmt):
+def _fmt_mtd_progress(actual, target_fmt, is_percentage=None):
     """Format MTD Progress to match target format with 2 decimal places for percentages."""
     if pd.isna(actual):
         return "—"
-    # If target is percentage format, show as percentage
-    if target_fmt and isinstance(target_fmt, str) and target_fmt.endswith("%"):
-        # If actual is < 10, assume decimal format (0.94), convert to percentage
-        if actual < 10:
-            return f"{actual*100:.2f}%"
-        else:
+    # If we know the format, use it
+    if is_percentage is not None:
+        if is_percentage:
             return f"{actual:.2f}%"
+        else:
+            return f"{actual:.2f}"
+    # Fallback to checking target format string
+    if target_fmt and isinstance(target_fmt, str) and target_fmt.endswith("%"):
+        return f"{actual:.2f}%"
     else:
         return f"{actual:.2f}"
 
-def _fmt_gap(gap, target_fmt):
+def _fmt_gap(gap, target_fmt, is_percentage=None):
     """Format gap to match target format with 2 decimal places for percentages."""
     if pd.isna(gap):
         return "—"
-    # If target is percentage format, show gap as percentage
-    if target_fmt and isinstance(target_fmt, str) and target_fmt.endswith("%"):
-        if abs(gap) < 10:
-            return f"{gap*100:+.2f}%"
-        else:
+    # If we know the format, use it
+    if is_percentage is not None:
+        if is_percentage:
             return f"{gap:+.2f}%"
+        else:
+            return f"{gap:+.2f}"
+    # Fallback to checking target format string
+    if target_fmt and isinstance(target_fmt, str) and target_fmt.endswith("%"):
+        return f"{gap:+.2f}%"
     else:
         return f"{gap:+.2f}"
 
@@ -448,17 +455,20 @@ else:
     
     mtd_display = weekly_df[mtd_cols].copy()
 
-    mtd_display[config.KPI_COL_TARGET] = mtd_display[config.KPI_COL_TARGET].apply(_fmt_target)
+    # Get percentage format from session state
+    is_pct = st.session_state.get("_pct_cols", {}).get(config.KPI_COL_TARGET, None)
+    
+    mtd_display[config.KPI_COL_TARGET] = mtd_display[config.KPI_COL_TARGET].apply(lambda x: _fmt_target(x, is_percentage=is_pct))
     
     # Format MTD Progress to match target format
     mtd_display["MTD Progress"] = mtd_display.apply(
-        lambda row: _fmt_mtd_progress(row.get("MTD Progress"), row.get(config.KPI_COL_TARGET)),
+        lambda row: _fmt_mtd_progress(row.get("MTD Progress"), row.get(config.KPI_COL_TARGET), is_percentage=is_pct),
         axis=1
     )
     
     # Format Gap to Target to match target format
     mtd_display["Gap to Target"] = mtd_display.apply(
-        lambda row: _fmt_gap(row.get("Gap to Target"), row.get(config.KPI_COL_TARGET)),
+        lambda row: _fmt_gap(row.get("Gap to Target"), row.get(config.KPI_COL_TARGET), is_percentage=is_pct),
         axis=1
     )
     
@@ -552,34 +562,38 @@ kpi_cols.extend([
 
 all_kpis_display = enriched[kpi_cols].copy()
 
-all_kpis_display[config.KPI_COL_TARGET] = all_kpis_display[config.KPI_COL_TARGET].apply(_fmt_target)
+# Get percentage format from session state
+is_pct = st.session_state.get("_pct_cols", {}).get(config.KPI_COL_TARGET, None)
+
+all_kpis_display[config.KPI_COL_TARGET] = all_kpis_display[config.KPI_COL_TARGET].apply(lambda x: _fmt_target(x, is_percentage=is_pct))
 
 # Format Latest Actual to match target format (show as percentage if target is percentage)
 def _fmt_actual(row):
     """Format actual value to match target format."""
     actual = row.get("Latest Actual")
     target = row.get(config.KPI_COL_TARGET)  # This is already formatted (e.g., "95.00%")
+    is_pct = st.session_state.get("_pct_cols", {}).get(config.KPI_COL_TARGET, None)
     
     if pd.isna(actual):
         return "—"
     
-    # If target ends with %, format actual as percentage
-    if target and isinstance(target, str) and target.endswith("%"):
-        # If actual is < 10, it's likely a decimal (0.94), convert to percentage
-        if actual < 10:
-            return f"{actual*100:.2f}%"
-        else:
-            # Already in percentage format (94), just add %
+    # If we know it's a percentage from source format, use that
+    if is_pct is not None:
+        if is_pct:
             return f"{actual:.2f}%"
+        else:
+            return f"{actual:.2f}"
+    # Fallback to checking target format string
+    if target and isinstance(target, str) and target.endswith("%"):
+        return f"{actual:.2f}%"
     else:
-        # Regular numeric format
         return f"{actual:.2f}"
 
 all_kpis_display["Latest Actual"] = all_kpis_display.apply(_fmt_actual, axis=1)
 
 # Format Gap to Target to match target format
 all_kpis_display["Gap to Target"] = all_kpis_display.apply(
-    lambda row: _fmt_gap(row.get("Gap to Target"), row.get(config.KPI_COL_TARGET)),
+    lambda row: _fmt_gap(row.get("Gap to Target"), row.get(config.KPI_COL_TARGET), is_percentage=is_pct),
     axis=1
 )
 all_kpis_display = all_kpis_display.rename(columns={

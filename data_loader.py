@@ -93,12 +93,20 @@ def _load_kpi_registry() -> pd.DataFrame:
     if df.empty:
         return df
 
+    # Track which columns have percentage format in the source sheet
+    percentage_cols = {}
     for col in [config.KPI_COL_TARGET, config.KPI_COL_GREEN,
                 config.KPI_COL_AMBER, config.KPI_COL_RED]:
         if col in df.columns:
+            # Detect if values have % sign before stripping
+            has_percent = df[col].astype(str).str.strip().str.contains('%', regex=False).any()
+            percentage_cols[col] = has_percent
             # Handle percentage strings like "100%" stored in the sheet
             raw = df[col].astype(str).str.strip().str.rstrip('%')
             df[col] = pd.to_numeric(raw, errors="coerce")
+
+    # Store percentage format info in session state for later use
+    st.session_state["_pct_cols"] = percentage_cols
 
     # Normalise text columns
     for col in [config.KPI_COL_DEPARTMENT, config.KPI_COL_MONTH,
