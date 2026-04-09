@@ -1,3 +1,4 @@
+import calendar
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
@@ -244,62 +245,55 @@ def append_actual(date: str, kpi_code: str, actual: float,
 # RAG status
 # =============================================================================
 
-def _to_ratio(thresh) -> float | None:
-    """Normalise a threshold to a 0–1 ratio.
-    - Values <= 2   → already a ratio (e.g. 0.95 or 1.05)
-    - Values 2–100  → percentage points (e.g. 95 → 0.95)
-    - Values > 100  → absolute; return as-is (handled separately)
+def _prorating_factor(actual_date_str, month_str) -> float:
     """
-    if pd.isna(thresh):
-        return None
-    if thresh <= 2.0:
-        return float(thresh)
-    if thresh <= 100.0:
-        return thresh / 100.0
-    return float(thresh)   # absolute — caller must compare differently
-
-
-def compute_rag(actual, target, green, amber, red) -> str:
+    Return elapsed_days / days_in_month for the submission date.
+    Used to scale monthly thresholds to the appropriate MTD checkpoint.
+    e.g. day 9 of a 30-day month → 0.30  (thresholds scaled to 30% of full value)
+    Returns 1.0 on any parse failure (no pro-rating applied).
     """
-    Evaluate RAG by expressing actual as a fraction of target, then comparing
-    against normalised thresholds.  Works for both absolute KPIs (target=424 Cr,
-    actual=150) and ratio/percentage KPIs (target=1.0, actual=0.92).
+    try:
+        actual_date = pd.to_datetime(actual_date_str).date()
+        month_ts    = parse_month(str(month_str).strip())
+        if pd.isna(month_ts):
+            return 1.0
+        days_in_month = calendar.monthrange(month_ts.year, month_ts.month)[1]
+        elapsed       = actual_date.day
+        return min(elapsed / days_in_month, 1.0)
+    except Exception:
+        return 1.0
 
-    Higher-is-better: actual/target >= green_ratio → Green, etc.
-    If any threshold > 100 it is treated as an absolute value and compared
-    directly against actual (for KPIs whose thresholds are hard numbers).
+
+def compute_rag(actual, green, amber, red, prorated_factor: float = 1.0) -> str:
+    """
+    Compare actual directly against thresholds using the same units as the
+    KPI Registry (no normalisation — what you see in the sheet is what is used).
+
+    For MTD / weekly-tracked KPIs pass prorated_factor = elapsed_days / days_in_month
+    so the thresholds are scaled to the current point in the month before comparison.
+
+    Example: green=400, day 9 of 30 → effective_green = 400 × (9/30) = 120.
+    Higher-is-better: actual >= effective_green → Green, etc.
     """
     try:
         if pd.isna(actual):
             return "Unknown"
-
         actual = float(actual)
-        g = _to_ratio(green)
-        a = _to_ratio(amber)
-        r = _to_ratio(red)
 
-        # Decide comparison mode based on thresholds
-        # If thresholds are absolute (>100), compare actual directly
-        thresholds_are_absolute = any(
-            pd.notna(t) and float(t) > 100
-            for t in [green, amber, red]
-            if pd.notna(t)
-        )
+        def effective(thresh):
+            if pd.isna(thresh):
+                return None
+            return float(thresh) * prorated_factor
 
-        if thresholds_are_absolute:
-            # Direct absolute comparison (e.g. green=400, actual=150)
-            compare_val = actual
-        elif pd.notna(target) and float(target) != 0:
-            # Ratio comparison: how much of the target has been achieved?
-            compare_val = actual / float(target)
-        else:
-            compare_val = actual
+        g = effective(green)
+        a = effective(amber)
+        r = effective(red)
 
-        if g is not None and compare_val >= g:
+        if g is not None and actual >= g:
             return "Green"
-        if a is not None and compare_val >= a:
+        if a is not None and actual >= a:
             return "Amber"
-        if r is not None and compare_val >= r:
+        if r is not None and actual >= r:
             return "Red"
         return "Red"
     except Exception:
@@ -327,10 +321,12 @@ def enrich_with_rag(kpis_df: pd.DataFrame, actuals_df: pd.DataFrame) -> pd.DataF
             config.ACTUAL_COL_KPI_CODE,
             config.ACTUAL_COL_ACTUAL,
             config.ACTUAL_COL_COMMENT,
+            config.ACTUAL_COL_DATE,
         ]]
         .rename(columns={
             config.ACTUAL_COL_ACTUAL:  "Latest Actual",
             config.ACTUAL_COL_COMMENT: "Latest Comment",
+            config.ACTUAL_COL_DATE:    "Latest Date",
         })
     )
 
@@ -345,16 +341,22 @@ def enrich_with_rag(kpis_df: pd.DataFrame, actuals_df: pd.DataFrame) -> pd.DataF
         merged = merged.drop(columns=[config.ACTUAL_COL_KPI_CODE])
 
     merged["Latest Comment"] = merged["Latest Comment"].fillna("")
-    merged["RAG Status"] = merged.apply(
-        lambda row: compute_rag(
+
+    def _rag_for_row(row):
+        is_weekly = str(row.get(config.KPI_COL_WEEKLY_TRACKED, "")).strip().upper() == "YES"
+        factor = (
+            _prorating_factor(row.get("Latest Date"), row.get(config.KPI_COL_MONTH))
+            if is_weekly else 1.0
+        )
+        return compute_rag(
             row.get("Latest Actual"),
-            row.get(config.KPI_COL_TARGET),
             row.get(config.KPI_COL_GREEN),
             row.get(config.KPI_COL_AMBER),
             row.get(config.KPI_COL_RED),
-        ),
-        axis=1,
-    )
+            prorated_factor=factor,
+        )
+
+    merged["RAG Status"] = merged.apply(_rag_for_row, axis=1)
     return merged
 
 
