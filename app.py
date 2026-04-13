@@ -298,8 +298,8 @@ def _fmt_target(value, row_index=None, is_percentage=None, fallback="—"):
                 return f"{v:.2f}"
         
         # Fallback to intelligent detection
-        # Decimal range: definitely a percentage (0.95 = 95%)
-        if v <= 1.0:
+        # Decimal range: definitely a percentage (e.g. 0.95 = 95%, -0.08 = -8%)
+        if abs(v) <= 1.0:
             pct = v * 100
             return f"{int(pct)}.00%" if pct == int(pct) else f"{pct:.2f}%"
         
@@ -471,7 +471,7 @@ else:
         def _fmt_target_with_flag(row):
             v = row[config.KPI_COL_TARGET]
             if row[pct_col_name]:
-                return f"{v * 100:.2f}%" if v <= 1.0 else f"{v:.2f}%"
+                return f"{v * 100:.2f}%" if abs(v) <= 1.0 else f"{v:.2f}%"
             return f"{v:.2f}"
         mtd_display[config.KPI_COL_TARGET] = mtd_display.apply(_fmt_target_with_flag, axis=1)
     else:
@@ -486,13 +486,13 @@ else:
         is_pct = row.get(pct_col_name, False) if pct_col_name in weekly_df.columns else False
         if is_pct:
             # Check if actual is in decimal format (0-1 range) - if so, multiply by 100
-            if actual <= 1.0:
+            if abs(actual) <= 1.0:
                 return f"{actual * 100:.2f}%"
             else:
                 return f"{actual:.2f}%"
         else:
             return f"{actual:.2f}"
-    
+
     mtd_display["MTD Progress"] = mtd_display.apply(_fmt_mtd_with_flag, axis=1)
     
     # Gap to Target is always % of target — format uniformly
@@ -606,7 +606,7 @@ pct_col_name = f"_{config.KPI_COL_TARGET}_is_pct"
 def _fmt_target_all(row):
     v = row[config.KPI_COL_TARGET]
     if row.get(pct_col_name, False):
-        return f"{v * 100:.2f}%" if v <= 1.0 else f"{v:.2f}%"
+        return f"{v * 100:.2f}%" if abs(v) <= 1.0 else f"{v:.2f}%"
     return f"{v:.2f}"
 
 if pct_col_name in enriched.columns:
@@ -624,7 +624,7 @@ def _fmt_actual_with_flag(row):
     is_pct = row.get(pct_col_name, False) if pct_col_name in enriched.columns else False
     if is_pct:
         # Check if actual is in decimal format (0-1 range) - if so, multiply by 100
-        if actual <= 1.0:
+        if abs(actual) <= 1.0:
             return f"{actual * 100:.2f}%"
         else:
             return f"{actual:.2f}%"
@@ -685,7 +685,7 @@ _convert_pct = False   # whether to divide input by 100 before saving
 if _kpi_is_pct:
     try:
         _t = float(_kpi_target)
-        _pct_decimal = _t <= 1.0   # decimal form: target stored as 0-1 (e.g. 0.95 = 95%)
+        _pct_decimal = abs(_t) <= 1.0   # decimal form: target stored as 0-1 (e.g. 0.95 = 95%)
     except (TypeError, ValueError):
         _pct_decimal = False
     if _pct_decimal:
@@ -722,7 +722,7 @@ if not kpi_history.empty:
         # Format Previous Actual in the same unit as the target column
         _v = last[config.ACTUAL_COL_ACTUAL]
         if _kpi_is_pct:
-            prev_actual_display = f"{_v * 100:.2f}%" if _v <= 1.0 else f"{_v:.2f}%"
+            prev_actual_display = f"{_v * 100:.2f}%" if abs(_v) <= 1.0 else f"{_v:.2f}%"
         else:
             prev_actual_display = f"{_v:.2f}"
         lc1.metric("Previous Actual", prev_actual_display)
@@ -734,7 +734,7 @@ with st.form("actuals_form", clear_on_submit=True):
     # Build help text with instructions
     _help_text = None
     if _kpi_is_pct:
-        _target_fmt = f"{_kpi_target * 100:.2f}%" if (_kpi_target is not None and float(_kpi_target) <= 1.0) else f"{_kpi_target:.2f}%"
+        _target_fmt = f"{_kpi_target * 100:.2f}%" if (_kpi_target is not None and abs(float(_kpi_target)) <= 1.0) else f"{_kpi_target:.2f}%"
         _help_text = f"Enter the value as a percentage (0-100). Example: enter 94 for 94%. Target: {_target_fmt}"
     
     _input_kwargs = dict(
