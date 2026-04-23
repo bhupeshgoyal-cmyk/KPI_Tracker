@@ -766,6 +766,7 @@ if submitted:
             actual=save_value,
             comment=comment.strip(),
             updated_by=user["email"],
+            month=selected_month,
         )
         display_value = f"{actual_value:.2f}%" if _kpi_is_pct else f"{actual_value:.2f}"
         st.success(f"Saved! {selected_label} → {display_value} on {date.today().strftime('%d %b %Y')}")
