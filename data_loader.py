@@ -14,7 +14,7 @@ _SCOPES = [
 _EMPTY_ACTUALS = pd.DataFrame(columns=[
     config.ACTUAL_COL_DATE, config.ACTUAL_COL_KPI_CODE,
     config.ACTUAL_COL_ACTUAL, config.ACTUAL_COL_COMMENT,
-    config.ACTUAL_COL_UPDATED_BY,
+    config.ACTUAL_COL_UPDATED_BY, config.ACTUAL_COL_MONTH,
 ])
 
 
@@ -107,7 +107,7 @@ def _load_kpi_registry() -> pd.DataFrame:
 
     # Normalise text columns
     for col in [config.KPI_COL_DEPARTMENT, config.KPI_COL_MONTH,
-                config.KPI_COL_WEEKLY_TRACKED]:
+                config.KPI_COL_WEEKLY_TRACKED, config.KPI_COL_UNIT]:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
 
@@ -181,13 +181,29 @@ def load_actuals(department: str, month: str) -> pd.DataFrame:
     filtered[config.ACTUAL_COL_DATE]   = pd.to_datetime(filtered[config.ACTUAL_COL_DATE], errors="coerce")
     filtered[config.ACTUAL_COL_ACTUAL] = pd.to_numeric(filtered[config.ACTUAL_COL_ACTUAL], errors="coerce")
 
-    # Filter to selected month
-    month_dt = parse_month(month)
+    # Filter to selected month:
+    # - Prefer the explicit Month column (set at submit time from the sidebar selector)
+    # - Fall back to date's year/month for legacy rows where Month is empty
+    month_str = str(month).strip()
+    month_dt  = parse_month(month)
+
+    if config.ACTUAL_COL_MONTH in filtered.columns:
+        month_col   = filtered[config.ACTUAL_COL_MONTH].astype(str).str.strip()
+        month_match = month_col == month_str
+        legacy_mask = month_col.isin(["", "nan", "NaN", "None"])
+    else:
+        month_match = pd.Series(False, index=filtered.index)
+        legacy_mask = pd.Series(True,  index=filtered.index)
+
     if pd.notna(month_dt):
-        filtered = filtered[
+        date_match = (
             (filtered[config.ACTUAL_COL_DATE].dt.year  == month_dt.year) &
             (filtered[config.ACTUAL_COL_DATE].dt.month == month_dt.month)
-        ]
+        )
+    else:
+        date_match = pd.Series(False, index=filtered.index)
+
+    filtered = filtered[month_match | (legacy_mask & date_match)]
 
     result = filtered.sort_values(config.ACTUAL_COL_DATE, ascending=False).reset_index(drop=True)
     st.session_state["debug_actuals_loaded"] = len(result)
@@ -229,11 +245,23 @@ def log_insight_usage(department: str, user_email: str) -> None:
         pass  # non-critical — don't crash if logging fails
 
 
+@st.cache_resource(show_spinner=False)
+def _ensure_actuals_month_column() -> bool:
+    """Add a 'Month' header to the Actuals sheet if it isn't there yet.
+    Idempotent and cached for the session so it runs at most once per process."""
+    ws = _get_sheet(config.ACTUALS_TAB)
+    headers = [h.strip() for h in ws.row_values(1)]
+    if config.ACTUAL_COL_MONTH not in headers:
+        ws.update_cell(1, len(headers) + 1, config.ACTUAL_COL_MONTH)
+    return True
+
+
 def append_actual(date: str, kpi_code: str, actual: float,
-                  comment: str, updated_by: str) -> None:
+                  comment: str, updated_by: str, month: str) -> None:
     """Append a row to Actuals and clear caches."""
+    _ensure_actuals_month_column()
     _get_sheet(config.ACTUALS_TAB).append_row(
-        [date, kpi_code, actual, comment, updated_by],
+        [date, kpi_code, actual, comment, updated_by, month],
         value_input_option="USER_ENTERED",
     )
     load_actuals.clear()

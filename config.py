@@ -50,6 +50,7 @@ ACTUAL_COL_KPI_CODE   = "KPI Code"
 ACTUAL_COL_ACTUAL     = "Actual"
 ACTUAL_COL_COMMENT    = "Comment"
 ACTUAL_COL_UPDATED_BY = "Updated By"
+ACTUAL_COL_MONTH      = "Month"
 
 # OpenAI
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
