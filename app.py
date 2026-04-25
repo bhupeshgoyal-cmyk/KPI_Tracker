@@ -392,148 +392,11 @@ with st.expander("🔍 Debug info", expanded=False):
         st.warning("No actuals found for this month. Submit data using the form below.")
 
 # =============================================================================
-# MTD formatting helpers
+# Section: KPI Status (RAG counters + Input/Output tables)
 # =============================================================================
-
-def _fmt_mtd_progress(actual, target_fmt, is_percentage=None):
-    """Format MTD Progress to match target format with 2 decimal places for percentages."""
-    if pd.isna(actual):
-        return "—"
-    # If we know the format, use it
-    if is_percentage is not None:
-        if is_percentage:
-            return f"{actual:.2f}%"
-        else:
-            return f"{actual:.2f}"
-    # Fallback to checking target format string
-    if target_fmt and isinstance(target_fmt, str) and target_fmt.endswith("%"):
-        return f"{actual:.2f}%"
-    else:
-        return f"{actual:.2f}"
-
-def _fmt_gap(gap, target_fmt, is_percentage=None):
-    """Format gap to match target format with 2 decimal places for percentages."""
-    if pd.isna(gap):
-        return "—"
-    # If we know the format, use it
-    if is_percentage is not None:
-        if is_percentage:
-            return f"{gap:+.2f}%"
-        else:
-            return f"{gap:+.2f}"
-    # Fallback to checking target format string
-    if target_fmt and isinstance(target_fmt, str) and target_fmt.endswith("%"):
-        return f"{gap:+.2f}%"
-    else:
-        return f"{gap:+.2f}"
-
-# =============================================================================
-# Section 1: MTD Progress — Weekly Tracked KPIs
-# =============================================================================
-st.markdown("<h2 style='color: #1A73E8; margin-bottom: 1rem;'>📈 MTD Progress — Weekly Tracked KPIs</h2>", unsafe_allow_html=True)
-
-weekly_df = enriched[
-    enriched.get(config.KPI_COL_WEEKLY_TRACKED, pd.Series([""] * len(enriched))).str.upper() == "YES"
-].copy() if config.KPI_COL_WEEKLY_TRACKED in enriched.columns else pd.DataFrame()
-
-if weekly_df.empty:
-    st.info("No weekly tracked KPIs for this month.")
-else:
-    # Sort by largest negative gap first (most behind)
-    weekly_df["_gap_sort"] = pd.to_numeric(weekly_df["Gap to Target"], errors="coerce").fillna(0)
-    weekly_df = weekly_df.sort_values("_gap_sort").drop(columns=["_gap_sort"])
-
-    # Build column list - add Owner column for admins (if it exists)
-    mtd_cols = [
-        config.KPI_COL_NAME,
-    ]
-    if user.get("is_admin", False) and config.KPI_COL_OWNER in weekly_df.columns:
-        mtd_cols.append(config.KPI_COL_OWNER)
-    # Add Unit column if it exists
-    if config.KPI_COL_UNIT in weekly_df.columns:
-        mtd_cols.append(config.KPI_COL_UNIT)
-    mtd_cols.extend([
-        config.KPI_COL_TARGET,
-        config.KPI_COL_TARGET_DESC,
-        "MTD Progress",
-        "Gap to Target",
-    ])
-    
-    # Get per-row percentage format from the marked columns
-    pct_col_name = f"_{config.KPI_COL_TARGET}_is_pct"
-    if pct_col_name in weekly_df.columns:
-        mtd_cols.append(pct_col_name)
-    
-    mtd_display = weekly_df[mtd_cols].copy()
-    
-    # Format Target using per-row format flag
-    if pct_col_name in weekly_df.columns:
-        def _fmt_target_with_flag(row):
-            v = row[config.KPI_COL_TARGET]
-            if row[pct_col_name]:
-                return f"{v * 100:.2f}%" if abs(v) <= 1.0 else f"{v:.2f}%"
-            return f"{v:.2f}"
-        mtd_display[config.KPI_COL_TARGET] = mtd_display.apply(_fmt_target_with_flag, axis=1)
-    else:
-        # Fallback if column not found
-        mtd_display[config.KPI_COL_TARGET] = mtd_display[config.KPI_COL_TARGET].apply(_fmt_target)
-    
-    # Format MTD Progress to match target format (using per-row flag)
-    def _fmt_mtd_with_flag(row):
-        actual = row.get("MTD Progress")
-        if pd.isna(actual):
-            return "—"
-        is_pct = row.get(pct_col_name, False) if pct_col_name in weekly_df.columns else False
-        if is_pct:
-            # Check if actual is in decimal format (0-1 range) - if so, multiply by 100
-            if abs(actual) <= 1.0:
-                return f"{actual * 100:.2f}%"
-            else:
-                return f"{actual:.2f}%"
-        else:
-            return f"{actual:.2f}"
-
-    mtd_display["MTD Progress"] = mtd_display.apply(_fmt_mtd_with_flag, axis=1)
-    
-    # Gap to Target is always % of target — format uniformly
-    mtd_display["Gap to Target"] = mtd_display["Gap to Target"].apply(
-        lambda g: f"{g:+.2f}%" if pd.notna(g) else "—"
-    )
-    
-    # Drop the percentage flag column before renaming/displaying
-    if pct_col_name in mtd_display.columns:
-        mtd_display = mtd_display.drop(columns=[pct_col_name])
-    
-    # Build rename mapping - include Owner for admins (if it exists)
-    rename_map = {
-        config.KPI_COL_NAME:        "KPI Name",
-        config.KPI_COL_TARGET:      "Target",
-        config.KPI_COL_TARGET_DESC: "Target Description",
-    }
-    if user.get("is_admin", False) and config.KPI_COL_OWNER in weekly_df.columns:
-        rename_map[config.KPI_COL_OWNER] = "Owner"
-    if config.KPI_COL_UNIT in weekly_df.columns:
-        rename_map[config.KPI_COL_UNIT] = "Unit"
-    
-    mtd_display = mtd_display.rename(columns=rename_map)
-
-    st.dataframe(
-        mtd_display,
-        use_container_width=True,
-        hide_index=True,
-    )
-
-st.divider()
-
-# =============================================================================
-# Section 2: All KPIs
-# =============================================================================
-st.markdown("<h2 style='color: #1A73E8; margin-bottom: 1rem;'>📋 All KPIs</h2>", unsafe_allow_html=True)
-
 raw_rag = enriched["RAG Status"]
 b1, b2, b3, b4 = st.columns(4)
 
-# Custom metric styling with Stashfin colors
 with b1:
     st.markdown(
         f"<div style='background: linear-gradient(135deg, #F8F9FA 0%, #FFFFFF 100%); border: 1px solid #E8EAED; border-radius: 8px; padding: 1.5rem; text-align: center;'>"
@@ -575,91 +438,106 @@ with b4:
 
 st.write("")
 
-# Build column list - add Owner column for admins (if it exists)
-kpi_cols = [
-    config.KPI_COL_CODE,
-    config.KPI_COL_NAME,
-]
-if user.get("is_admin", False) and config.KPI_COL_OWNER in enriched.columns:
-    kpi_cols.append(config.KPI_COL_OWNER)
-# Add Unit column if it exists
-if config.KPI_COL_UNIT in enriched.columns:
-    kpi_cols.append(config.KPI_COL_UNIT)
-kpi_cols.extend([
-    config.KPI_COL_TARGET,
-    config.KPI_COL_TARGET_DESC,
-    "Latest Actual",
-    "Gap to Target",
-])
-
-# Get per-row percentage format from the marked columns
-pct_col_name = f"_{config.KPI_COL_TARGET}_is_pct"
-if pct_col_name in enriched.columns:
-    kpi_cols.append(pct_col_name)
-
-all_kpis_display = enriched[kpi_cols].copy()
-
-# Get per-row percentage format from the marked columns
 pct_col_name = f"_{config.KPI_COL_TARGET}_is_pct"
 
-# Format Target using per-row format flag
-def _fmt_target_all(row):
-    v = row[config.KPI_COL_TARGET]
-    if row.get(pct_col_name, False):
-        return f"{v * 100:.2f}%" if abs(v) <= 1.0 else f"{v:.2f}%"
-    return f"{v:.2f}"
 
-if pct_col_name in enriched.columns:
-    all_kpis_display[config.KPI_COL_TARGET] = all_kpis_display.apply(_fmt_target_all, axis=1)
-else:
-    # Fallback if column not found
-    all_kpis_display[config.KPI_COL_TARGET] = all_kpis_display[config.KPI_COL_TARGET].apply(lambda x: _fmt_target(x))
+def _render_kpi_table(section_df: pd.DataFrame) -> None:
+    """Render a KPI subsection: standard columns, sorted most-behind first."""
+    section_df = section_df.copy()
+    section_df["_gap_sort"] = pd.to_numeric(section_df["Gap to Target"], errors="coerce").fillna(0)
+    section_df = section_df.sort_values("_gap_sort").drop(columns=["_gap_sort"])
 
-# Format Latest Actual to match target format (using per-row flag)
-def _fmt_actual_with_flag(row):
-    """Format actual value to match target format using per-row flag."""
-    actual = row.get("Latest Actual")
-    if pd.isna(actual):
-        return "—"
-    is_pct = row.get(pct_col_name, False) if pct_col_name in enriched.columns else False
-    if is_pct:
-        # Check if actual is in decimal format (0-1 range) - if so, multiply by 100
-        if abs(actual) <= 1.0:
-            return f"{actual * 100:.2f}%"
-        else:
-            return f"{actual:.2f}%"
-    else:
+    cols = [config.KPI_COL_CODE, config.KPI_COL_NAME]
+    if user.get("is_admin", False) and config.KPI_COL_OWNER in section_df.columns:
+        cols.append(config.KPI_COL_OWNER)
+    if config.KPI_COL_UNIT in section_df.columns:
+        cols.append(config.KPI_COL_UNIT)
+    cols.extend([config.KPI_COL_TARGET, config.KPI_COL_TARGET_DESC,
+                 "Latest Actual", "Gap to Target"])
+    if pct_col_name in section_df.columns:
+        cols.append(pct_col_name)
+
+    display = section_df[cols].copy()
+
+    def _fmt_target_row(row):
+        v = row[config.KPI_COL_TARGET]
+        if pd.isna(v):
+            return "—"
+        if row.get(pct_col_name, False):
+            return f"{v * 100:.2f}%" if abs(v) <= 1.0 else f"{v:.2f}%"
+        return f"{v:.2f}"
+
+    def _fmt_actual_row(row):
+        actual = row.get("Latest Actual")
+        if pd.isna(actual):
+            return "—"
+        if row.get(pct_col_name, False):
+            return f"{actual * 100:.2f}%" if abs(actual) <= 1.0 else f"{actual:.2f}%"
         return f"{actual:.2f}"
 
-all_kpis_display["Latest Actual"] = all_kpis_display.apply(_fmt_actual_with_flag, axis=1)
+    display[config.KPI_COL_TARGET] = display.apply(_fmt_target_row, axis=1)
+    display["Latest Actual"]       = display.apply(_fmt_actual_row, axis=1)
+    display["Gap to Target"]       = display["Gap to Target"].apply(
+        lambda g: f"{g:+.2f}%" if pd.notna(g) else "—"
+    )
 
-# Gap to Target is always % of target — format uniformly
-all_kpis_display["Gap to Target"] = all_kpis_display["Gap to Target"].apply(
-    lambda g: f"{g:+.2f}%" if pd.notna(g) else "—"
-)
+    if pct_col_name in display.columns:
+        display = display.drop(columns=[pct_col_name])
 
-# Drop the percentage flag column before renaming/displaying
-if pct_col_name in all_kpis_display.columns:
-    all_kpis_display = all_kpis_display.drop(columns=[pct_col_name])
+    rename_map = {
+        config.KPI_COL_CODE:        "Code",
+        config.KPI_COL_NAME:        "KPI Name",
+        config.KPI_COL_TARGET:      "Target",
+        config.KPI_COL_TARGET_DESC: "Target Description",
+    }
+    if user.get("is_admin", False) and config.KPI_COL_OWNER in section_df.columns:
+        rename_map[config.KPI_COL_OWNER] = "Owner"
+    if config.KPI_COL_UNIT in section_df.columns:
+        rename_map[config.KPI_COL_UNIT] = "Unit"
 
-all_kpis_display = all_kpis_display.rename(columns={
-    config.KPI_COL_CODE:        "Code",
-    config.KPI_COL_NAME:        "KPI Name",
-    config.KPI_COL_TARGET:      "Target",
-    config.KPI_COL_TARGET_DESC: "Target Description",
-    **({
-        config.KPI_COL_OWNER: "Owner"
-    } if (user.get("is_admin", False) and config.KPI_COL_OWNER in enriched.columns) else {}),
-    **({
-        config.KPI_COL_UNIT: "Unit"
-    } if config.KPI_COL_UNIT in enriched.columns else {})
-})
+    display = display.rename(columns=rename_map)
+    st.dataframe(display, use_container_width=True, hide_index=True)
 
-st.dataframe(
-    all_kpis_display,
-    use_container_width=True,
-    hide_index=True,
-)
+
+def _render_type_section(label: str, icon: str, type_value: str) -> None:
+    """Render a top-level type section (Input / Output) with P0 + Others subsections."""
+    if config.KPI_COL_TYPE not in enriched.columns:
+        return
+    type_mask = (
+        enriched[config.KPI_COL_TYPE].astype(str).str.strip().str.lower()
+        == type_value.lower()
+    )
+    section = enriched[type_mask]
+    if section.empty:
+        return
+
+    if config.KPI_COL_P0 in section.columns:
+        p0_mask = section[config.KPI_COL_P0].astype(str).str.strip().str.upper() == "P0"
+    else:
+        p0_mask = pd.Series(False, index=section.index)
+    p0_df     = section[p0_mask]
+    others_df = section[~p0_mask]
+
+    st.markdown(
+        f"<h2 style='color: #1A73E8; margin-bottom: 1rem;'>{icon} {label}</h2>",
+        unsafe_allow_html=True,
+    )
+    if not p0_df.empty:
+        st.markdown(
+            "<h3 style='color: #202124; margin-top: 0.5rem;'>P0</h3>",
+            unsafe_allow_html=True,
+        )
+        _render_kpi_table(p0_df)
+    if not others_df.empty:
+        st.markdown(
+            "<h3 style='color: #202124; margin-top: 1rem;'>Others</h3>",
+            unsafe_allow_html=True,
+        )
+        _render_kpi_table(others_df)
+
+
+_render_type_section("Input KPIs",  "📥", "Input")
+_render_type_section("Output KPIs", "📤", "Output")
 
 st.divider()
 

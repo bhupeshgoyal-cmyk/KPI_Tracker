@@ -107,7 +107,8 @@ def _load_kpi_registry() -> pd.DataFrame:
 
     # Normalise text columns
     for col in [config.KPI_COL_DEPARTMENT, config.KPI_COL_MONTH,
-                config.KPI_COL_WEEKLY_TRACKED, config.KPI_COL_UNIT]:
+                config.KPI_COL_WEEKLY_TRACKED, config.KPI_COL_UNIT,
+                config.KPI_COL_TYPE, config.KPI_COL_P0]:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
 
@@ -370,11 +371,16 @@ def enrich_with_rag(kpis_df: pd.DataFrame, actuals_df: pd.DataFrame) -> pd.DataF
 
     merged["Latest Comment"] = merged["Latest Comment"].fillna("")
 
+    pct_flag_col = f"_{config.KPI_COL_TARGET}_is_pct"
+
     def _rag_for_row(row):
-        is_weekly = str(row.get(config.KPI_COL_WEEKLY_TRACKED, "")).strip().upper() == "YES"
+        # Prorate only when the target is NOT stored as a percentage.
+        # Percentage / ratio KPIs don't accumulate over the month, so scaling
+        # their thresholds by elapsed_days/days_in_month would be wrong.
+        target_is_pct = bool(row.get(pct_flag_col, False))
         factor = (
-            _prorating_factor(row.get("Latest Date"), row.get(config.KPI_COL_MONTH))
-            if is_weekly else 1.0
+            1.0 if target_is_pct
+            else _prorating_factor(row.get("Latest Date"), row.get(config.KPI_COL_MONTH))
         )
         return compute_rag(
             row.get("Latest Actual"),
