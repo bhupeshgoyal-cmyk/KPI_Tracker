@@ -43,6 +43,8 @@ KPI_COL_GREEN          = "Green Threshold"
 KPI_COL_AMBER          = "Amber Threshold"
 KPI_COL_RED            = "Red Threshold"
 KPI_COL_WEEKLY_TRACKED = "Weekly Tracked"
+KPI_COL_TYPE           = "KPI Type"  # "Input" or "Output"
+KPI_COL_P0             = "P0"        # "P0" or blank
 
 # Column names — Actuals sheet
 ACTUAL_COL_DATE       = "Date"
