@@ -586,22 +586,18 @@ if _kpi_is_pct:
         _pct_decimal = abs(_t) <= 1.0   # decimal form: target stored as 0-1 (e.g. 0.95 = 95%)
     except (TypeError, ValueError):
         _pct_decimal = False
-    if _pct_decimal:
-        # Accept human-friendly percent input (e.g. 94), convert to decimal on save
-        _actual_label  = "Actual value (%)"
-        _actual_step   = 0.1
-        _actual_format = "%.1f"
-        _actual_max    = 100.0
-        _convert_pct   = True
-    else:
-        _actual_label  = "Actual value (%)"
-        _actual_step   = 0.1
-        _actual_format = "%.1f"
-        _actual_max    = None
+    # All percentage inputs are bounded to [-100, 100] — covers deltas / negatives
+    _actual_label  = "Actual value (%)"
+    _actual_step   = 0.1
+    _actual_format = "%.1f"
+    _actual_min    = -100.0
+    _actual_max    = 100.0
+    _convert_pct   = _pct_decimal   # decimal-form targets need /100 on save
 else:
     _actual_label  = "Actual value"
     _actual_step   = 0.01
     _actual_format = "%.2f"
+    _actual_min    = None
     _actual_max    = None
 
 # Show last submission for selected KPI
@@ -633,15 +629,16 @@ with st.form("actuals_form", clear_on_submit=True):
     _help_text = None
     if _kpi_is_pct:
         _target_fmt = f"{_kpi_target * 100:.2f}%" if (_kpi_target is not None and abs(float(_kpi_target)) <= 1.0) else f"{_kpi_target:.2f}%"
-        _help_text = f"Enter the value as a percentage (0-100). Example: enter 94 for 94%. Target: {_target_fmt}"
-    
+        _help_text = f"Enter the value as a percentage. Example: 94 for 94%, or -6.8 for -6.8%. Target: {_target_fmt}"
+
     _input_kwargs = dict(
         label=_actual_label,
-        min_value=0.0,
         step=_actual_step,
         format=_actual_format,
         help=_help_text,
     )
+    if _actual_min is not None:
+        _input_kwargs["min_value"] = _actual_min
     if _actual_max is not None:
         _input_kwargs["max_value"] = _actual_max
     actual_value = st.number_input(**_input_kwargs)
