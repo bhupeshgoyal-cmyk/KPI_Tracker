@@ -518,22 +518,42 @@ def _render_type_section(label: str, icon: str, type_value: str) -> None:
     p0_df     = section[p0_mask]
     others_df = section[~p0_mask]
 
+    # Parent banner — gives the section a clear, distinct visual weight
     st.markdown(
-        f"<h2 style='color: #1A73E8; margin-bottom: 1rem;'>{icon} {label}</h2>",
+        f"<div style='background: linear-gradient(90deg, #1A73E8 0%, #155FD0 100%); "
+        f"padding: 0.75rem 1.25rem; border-radius: 8px; "
+        f"margin: 1.75rem 0 0.75rem 0; display: flex; align-items: baseline; gap: 0.75rem;'>"
+        f"<span style='color: #FFFFFF; font-size: 1.4rem; font-weight: 700;'>{icon} {label}</span>"
+        f"<span style='color: rgba(255,255,255,0.85); font-size: 0.9rem; font-weight: 500;'>"
+        f"· {len(section)} KPIs</span>"
+        f"</div>",
         unsafe_allow_html=True,
     )
+
+    def _subsection(title: str, count: int, df_to_render: pd.DataFrame,
+                    accent: str = "#1A73E8", bg: str | None = None,
+                    label_color: str = "#5F6368") -> None:
+        # Indent subsection visually so it reads as a child of the parent banner
+        gutter, body = st.columns([0.03, 0.97])
+        with body:
+            bg_style = f"background: {bg}; padding: 0.45rem 0.75rem; border-radius: 4px;" if bg else ""
+            st.markdown(
+                f"<div style='border-left: 3px solid {accent}; padding-left: 0.6rem; "
+                f"margin: 0.75rem 0 0.4rem 0; font-size: 1.0rem; font-weight: 600; "
+                f"color: {label_color}; letter-spacing: 0.02em; {bg_style}'>"
+                f"{title} <span style='color: #9AA0A6; font-weight: 400;'>· {count}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            _render_kpi_table(df_to_render)
+
     if not p0_df.empty:
-        st.markdown(
-            "<h3 style='color: #202124; margin-top: 0.5rem;'>P0</h3>",
-            unsafe_allow_html=True,
+        _subsection(
+            "P0", len(p0_df), p0_df,
+            accent="#EA4335", bg="#FCE8E6", label_color="#C5221F",
         )
-        _render_kpi_table(p0_df)
     if not others_df.empty:
-        st.markdown(
-            "<h3 style='color: #202124; margin-top: 1rem;'>Others</h3>",
-            unsafe_allow_html=True,
-        )
-        _render_kpi_table(others_df)
+        _subsection("Others", len(others_df), others_df)
 
 
 _render_type_section("Input KPIs",  "📥", "Input")
