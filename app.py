@@ -272,7 +272,7 @@ if kpis_df.empty:
 # =============================================================================
 def _fmt(value, fallback="—", decimals=2):
     try:
-        return f"{float(value):.{decimals}f}" if pd.notna(value) else fallback
+        return f"{float(value):,.{decimals}f}" if pd.notna(value) else fallback
     except (TypeError, ValueError):
         return fallback
 
@@ -293,28 +293,28 @@ def _fmt_target(value, row_index=None, is_percentage=None, fallback="—"):
         # If we know the format from the sheet, use it
         if is_percentage is not None:
             if is_percentage:
-                return f"{v:.2f}%"
+                return f"{v:,.2f}%"
             else:
-                return f"{v:.2f}"
-        
+                return f"{v:,.2f}"
+
         # Fallback to intelligent detection
         # Decimal range: definitely a percentage (e.g. 0.95 = 95%, -0.08 = -8%)
         if abs(v) <= 1.0:
             pct = v * 100
-            return f"{int(pct)}.00%" if pct == int(pct) else f"{pct:.2f}%"
-        
+            return f"{int(pct):,}.00%" if pct == int(pct) else f"{pct:,.2f}%"
+
         # Large values (>100): definitely not percentages
         if v > 100:
-            return f"{int(v)}" if v == int(v) else f"{v:.2f}"
-        
+            return f"{int(v):,}" if v == int(v) else f"{v:,.2f}"
+
         # Range 1-100: could be percentage or regular number
         # Treat as percentage if it's a whole number or has clean decimal pattern
         if v == int(v):
-            return f"{int(v)}.00%"
+            return f"{int(v):,}.00%"
         elif (v * 10) == int(v * 10):
-            return f"{v:.2f}%"
+            return f"{v:,.2f}%"
         else:
-            return f"{v:.2f}"
+            return f"{v:,.2f}"
     except (TypeError, ValueError):
         return fallback
 
@@ -323,7 +323,7 @@ def _gap_label(gap):
     if pd.isna(gap) or gap is None:
         return "—"
     sign = "+" if gap >= 0 else ""
-    return f"{sign}{gap:.2f}"
+    return f"{sign}{gap:,.2f}"
 
 def _render_insight(text: str) -> None:
     """Parse SITUATION / SCRUTINY / ACTION sections and render with coloured borders."""
@@ -395,18 +395,29 @@ with st.expander("🔍 Debug info", expanded=False):
 # Section: KPI Status (RAG counters + Input/Output tables)
 # =============================================================================
 raw_rag = enriched["RAG Status"]
-b1, b2, b3, b4 = st.columns(4)
+b1, b2, b3, b4, b5 = st.columns(5)
 
 with b1:
+    total_count = len(enriched)
     st.markdown(
         f"<div style='background: linear-gradient(135deg, #F8F9FA 0%, #FFFFFF 100%); border: 1px solid #E8EAED; border-radius: 8px; padding: 1.5rem; text-align: center;'>"
-        f"<p style='color: #5F6368; font-size: 0.85rem; margin: 0; margin-bottom: 0.5rem;'>Total</p>"
-        f"<p style='color: #1A73E8; font-size: 2rem; font-weight: 700; margin: 0;'>{len(enriched)}</p>"
+        f"<p style='color: #5F6368; font-size: 0.85rem; margin: 0; margin-bottom: 0.5rem;'>Total (Sheet)</p>"
+        f"<p style='color: #1A73E8; font-size: 2rem; font-weight: 700; margin: 0;'>{total_count}</p>"
         f"</div>",
         unsafe_allow_html=True
     )
 
 with b2:
+    filled_count = int(raw_rag.isin(["Green", "Amber", "Red"]).sum())
+    st.markdown(
+        f"<div style='background: linear-gradient(135deg, #F8F9FA 0%, #FFFFFF 100%); border: 1px solid #1A73E8; border-radius: 8px; padding: 1.5rem; text-align: center;'>"
+        f"<p style='color: #5F6368; font-size: 0.85rem; margin: 0; margin-bottom: 0.5rem;'>Filled (Actuals)</p>"
+        f"<p style='color: #1A73E8; font-size: 2rem; font-weight: 700; margin: 0;'>{filled_count}</p>"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+
+with b3:
     green_count = int((raw_rag == "Green").sum())
     st.markdown(
         f"<div style='background: linear-gradient(135deg, #F8F9FA 0%, #FFFFFF 100%); border: 1px solid #34A853; border-radius: 8px; padding: 1.5rem; text-align: center;'>"
@@ -416,7 +427,7 @@ with b2:
         unsafe_allow_html=True
     )
 
-with b3:
+with b4:
     amber_count = int((raw_rag == "Amber").sum())
     st.markdown(
         f"<div style='background: linear-gradient(135deg, #F8F9FA 0%, #FFFFFF 100%); border: 1px solid #FBBC04; border-radius: 8px; padding: 1.5rem; text-align: center;'>"
@@ -426,7 +437,7 @@ with b3:
         unsafe_allow_html=True
     )
 
-with b4:
+with b5:
     red_count = int((raw_rag == "Red").sum())
     st.markdown(
         f"<div style='background: linear-gradient(135deg, #F8F9FA 0%, #FFFFFF 100%); border: 1px solid #EA4335; border-radius: 8px; padding: 1.5rem; text-align: center;'>"
@@ -464,21 +475,21 @@ def _render_kpi_table(section_df: pd.DataFrame) -> None:
         if pd.isna(v):
             return "—"
         if row.get(pct_col_name, False):
-            return f"{v * 100:.2f}%" if abs(v) <= 1.0 else f"{v:.2f}%"
-        return f"{v:.2f}"
+            return f"{v * 100:,.2f}%" if abs(v) <= 1.0 else f"{v:,.2f}%"
+        return f"{v:,.2f}"
 
     def _fmt_actual_row(row):
         actual = row.get("Latest Actual")
         if pd.isna(actual):
             return "—"
         if row.get(pct_col_name, False):
-            return f"{actual * 100:.2f}%" if abs(actual) <= 1.0 else f"{actual:.2f}%"
-        return f"{actual:.2f}"
+            return f"{actual * 100:,.2f}%" if abs(actual) <= 1.0 else f"{actual:,.2f}%"
+        return f"{actual:,.2f}"
 
     display[config.KPI_COL_TARGET] = display.apply(_fmt_target_row, axis=1)
     display["Latest Actual"]       = display.apply(_fmt_actual_row, axis=1)
     display["Gap to Target"]       = display["Gap to Target"].apply(
-        lambda g: f"{g:+.2f}%" if pd.notna(g) else "—"
+        lambda g: f"{g:+,.2f}%" if pd.notna(g) else "—"
     )
 
     if pct_col_name in display.columns:
@@ -496,68 +507,86 @@ def _render_kpi_table(section_df: pd.DataFrame) -> None:
         rename_map[config.KPI_COL_UNIT] = "Unit"
 
     display = display.rename(columns=rename_map)
-    st.dataframe(display, use_container_width=True, hide_index=True)
+
+    rag_per_row = section_df["RAG Status"].reindex(display.index)
+    rag_bg = {
+        "Green":   "background-color: #E6F4EA;",
+        "Amber":   "background-color: #FEF7E0;",
+        "Red":     "background-color: #FCE8E6;",
+        "Unknown": "background-color: #F1F3F4;",
+    }
+
+    def _row_style(row):
+        return [rag_bg.get(rag_per_row.loc[row.name], "background-color: #F1F3F4;")] * len(row)
+
+    styled = display.style.apply(_row_style, axis=1)
+    st.dataframe(styled, use_container_width=True, hide_index=True)
 
 
-def _render_type_section(label: str, icon: str, type_value: str) -> None:
-    """Render a top-level type section (Input / Output) with P0 + Others subsections."""
-    if config.KPI_COL_TYPE not in enriched.columns:
-        return
-    type_mask = (
-        enriched[config.KPI_COL_TYPE].astype(str).str.strip().str.lower()
-        == type_value.lower()
-    )
-    section = enriched[type_mask]
-    if section.empty:
-        return
+# Filters
+fc1, fc2, fc3, fc4 = st.columns(4)
 
-    if config.KPI_COL_P0 in section.columns:
-        p0_mask = section[config.KPI_COL_P0].astype(str).str.strip().str.upper() == "P0"
-    else:
-        p0_mask = pd.Series(False, index=section.index)
-    p0_df     = section[p0_mask]
-    others_df = section[~p0_mask]
-
-    # Parent banner — gives the section a clear, distinct visual weight
-    st.markdown(
-        f"<div style='background: linear-gradient(90deg, #1A73E8 0%, #155FD0 100%); "
-        f"padding: 0.75rem 1.25rem; border-radius: 8px; "
-        f"margin: 1.75rem 0 0.75rem 0; display: flex; align-items: baseline; gap: 0.75rem;'>"
-        f"<span style='color: #FFFFFF; font-size: 1.4rem; font-weight: 700;'>{icon} {label}</span>"
-        f"<span style='color: rgba(255,255,255,0.85); font-size: 0.9rem; font-weight: 500;'>"
-        f"· {len(section)} KPIs</span>"
-        f"</div>",
-        unsafe_allow_html=True,
+with fc1:
+    type_filter = st.selectbox(
+        "Type",
+        options=["Both", "Input", "Output"],
+        index=0,
     )
 
-    def _subsection(title: str, count: int, df_to_render: pd.DataFrame,
-                    accent: str = "#1A73E8", bg: str | None = None,
-                    label_color: str = "#5F6368") -> None:
-        # Indent subsection visually so it reads as a child of the parent banner
-        gutter, body = st.columns([0.03, 0.97])
-        with body:
-            bg_style = f"background: {bg}; padding: 0.45rem 0.75rem; border-radius: 4px;" if bg else ""
-            st.markdown(
-                f"<div style='border-left: 3px solid {accent}; padding-left: 0.6rem; "
-                f"margin: 0.75rem 0 0.4rem 0; font-size: 1.0rem; font-weight: 600; "
-                f"color: {label_color}; letter-spacing: 0.02em; {bg_style}'>"
-                f"{title} <span style='color: #9AA0A6; font-weight: 400;'>· {count}</span>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-            _render_kpi_table(df_to_render)
+with fc2:
+    p0_filter = st.selectbox(
+        "Priority",
+        options=["Both", "P0", "Others"],
+        index=0,
+    )
 
-    if not p0_df.empty:
-        _subsection(
-            "P0", len(p0_df), p0_df,
-            accent="#EA4335", bg="#FCE8E6", label_color="#C5221F",
+with fc3:
+    if config.KPI_COL_OWNER in enriched.columns:
+        owners = sorted(
+            o for o in enriched[config.KPI_COL_OWNER].astype(str).str.strip().unique()
+            if o and o.lower() != "nan"
         )
-    if not others_df.empty:
-        _subsection("Others", len(others_df), others_df)
+    else:
+        owners = []
+    owner_filter = st.selectbox(
+        "Owner",
+        options=["All"] + owners,
+        index=0,
+    )
 
+with fc4:
+    rag_filter = st.selectbox(
+        "RAG Status",
+        options=["All", "Green", "Amber", "Red"],
+        index=0,
+    )
 
-_render_type_section("Input KPIs",  "📥", "Input")
-_render_type_section("Output KPIs", "📤", "Output")
+filtered = enriched.copy()
+
+if type_filter != "Both" and config.KPI_COL_TYPE in filtered.columns:
+    filtered = filtered[
+        filtered[config.KPI_COL_TYPE].astype(str).str.strip().str.lower()
+        == type_filter.lower()
+    ]
+
+if p0_filter != "Both" and config.KPI_COL_P0 in filtered.columns:
+    is_p0 = filtered[config.KPI_COL_P0].astype(str).str.strip().str.upper() == "P0"
+    filtered = filtered[is_p0] if p0_filter == "P0" else filtered[~is_p0]
+
+if owner_filter != "All" and config.KPI_COL_OWNER in filtered.columns:
+    filtered = filtered[
+        filtered[config.KPI_COL_OWNER].astype(str).str.strip() == owner_filter
+    ]
+
+if rag_filter != "All":
+    filtered = filtered[filtered["RAG Status"] == rag_filter]
+
+st.caption(f"Showing **{len(filtered)}** of **{len(enriched)}** KPIs")
+
+if filtered.empty:
+    st.info("No KPIs match the selected filters.")
+else:
+    _render_kpi_table(filtered)
 
 st.divider()
 
@@ -616,9 +645,9 @@ if not kpi_history.empty:
         # Format Previous Actual in the same unit as the target column
         _v = last[config.ACTUAL_COL_ACTUAL]
         if _kpi_is_pct:
-            prev_actual_display = f"{_v * 100:.2f}%" if abs(_v) <= 1.0 else f"{_v:.2f}%"
+            prev_actual_display = f"{_v * 100:,.2f}%" if abs(_v) <= 1.0 else f"{_v:,.2f}%"
         else:
-            prev_actual_display = f"{_v:.2f}"
+            prev_actual_display = f"{_v:,.2f}"
         lc1.metric("Previous Actual", prev_actual_display)
         lc2.markdown(f"**Comment**\n\n{last_comment}")
 else:
@@ -628,7 +657,7 @@ with st.form("actuals_form", clear_on_submit=True):
     # Build help text with instructions
     _help_text = None
     if _kpi_is_pct:
-        _target_fmt = f"{_kpi_target * 100:.2f}%" if (_kpi_target is not None and abs(float(_kpi_target)) <= 1.0) else f"{_kpi_target:.2f}%"
+        _target_fmt = f"{_kpi_target * 100:,.2f}%" if (_kpi_target is not None and abs(float(_kpi_target)) <= 1.0) else f"{_kpi_target:,.2f}%"
         _help_text = f"Enter the value as a percentage. Example: 94 for 94%, or -6.8 for -6.8%. Target: {_target_fmt}"
 
     _input_kwargs = dict(
@@ -663,7 +692,7 @@ if submitted:
             updated_by=user["email"],
             month=selected_month,
         )
-        display_value = f"{actual_value:.2f}%" if _kpi_is_pct else f"{actual_value:.2f}"
+        display_value = f"{actual_value:,.2f}%" if _kpi_is_pct else f"{actual_value:,.2f}"
         st.success(f"Saved! {selected_label} → {display_value} on {date.today().strftime('%d %b %Y')}")
         st.rerun()
     except Exception as e:
