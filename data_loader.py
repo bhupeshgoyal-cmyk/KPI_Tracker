@@ -94,14 +94,18 @@ def _load_kpi_registry() -> pd.DataFrame:
     if df.empty:
         return df
 
-    # Track original format for each numeric column (before stripping %)
+    # Determine percentage flag from the Unit column — that's the column the
+    # user maintains intentionally. Cell formatting on the sheet is unreliable
+    # (some INR/Count cells were mistakenly typed into percent-formatted cells).
+    if config.KPI_COL_UNIT in df.columns:
+        is_pct_unit = df[config.KPI_COL_UNIT].astype(str).str.contains('%', regex=False)
+    else:
+        is_pct_unit = pd.Series(False, index=df.index)
+
     for col in [config.KPI_COL_TARGET, config.KPI_COL_GREEN,
                 config.KPI_COL_AMBER, config.KPI_COL_RED]:
         if col in df.columns:
-            # Mark each value as percentage or not based on original format
-            col_name_original = f"_{col}_is_pct"
-            df[col_name_original] = df[col].astype(str).str.strip().str.contains('%', regex=False)
-            # Handle percentage strings like "100%" stored in the sheet
+            df[f"_{col}_is_pct"] = is_pct_unit
             raw = df[col].astype(str).str.strip().str.rstrip('%')
             df[col] = pd.to_numeric(raw, errors="coerce")
 
@@ -427,11 +431,25 @@ def compute_mtd(enriched_df: pd.DataFrame) -> pd.DataFrame:
     df.loc[is_weekly, "MTD Progress"] = df.loc[is_weekly, "Latest Actual"]
 
     # Gap to Target for ALL KPIs = (latest_actual - target) / target * 100
+    pct_flag_col = f"_{config.KPI_COL_TARGET}_is_pct"
+
     def _gap_for_row(row):
         actual = row.get("Latest Actual")
         target = row.get(config.KPI_COL_TARGET)
         if pd.notna(actual) and pd.notna(target):
-            return _calculate_gap(float(actual), float(target))
+            actual = float(actual)
+            target_f = float(target)
+            # Legacy actuals for some %-KPIs were saved divided-by-100
+            # (e.g. 0.011 for what was meant as 1.1%). Detect by ratio: if
+            # the actual is two orders of magnitude smaller than the target,
+            # it was almost certainly the divided form — scale it up so the
+            # gap matches the percentage-form target the user now sees.
+            if (bool(row.get(pct_flag_col, False))
+                    and target_f != 0
+                    and abs(actual) > 0
+                    and abs(actual / target_f) < 0.05):
+                actual = actual * 100
+            return _calculate_gap(actual, target_f)
         return None
 
     df["Gap to Target"] = df.apply(_gap_for_row, axis=1)
