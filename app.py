@@ -475,7 +475,9 @@ def _render_kpi_table(section_df: pd.DataFrame) -> None:
         if pd.isna(v):
             return "—"
         if row.get(pct_col_name, False):
-            return f"{v * 100:,.2f}%" if abs(v) <= 1.0 else f"{v:,.2f}%"
+            # Sheet stores percent-formatted cells like "0.50%"; after stripping
+            # the % the value is already the percentage to display, so no *100.
+            return f"{v:,.2f}%"
         return f"{v:,.2f}"
 
     def _fmt_actual_row(row):
@@ -657,7 +659,7 @@ with st.form("actuals_form", clear_on_submit=True):
     # Build help text with instructions
     _help_text = None
     if _kpi_is_pct:
-        _target_fmt = f"{_kpi_target * 100:,.2f}%" if (_kpi_target is not None and abs(float(_kpi_target)) <= 1.0) else f"{_kpi_target:,.2f}%"
+        _target_fmt = f"{_kpi_target:,.2f}%" if _kpi_target is not None else "—"
         _help_text = f"Enter the value as a percentage. Example: 94 for 94%, or -6.8 for -6.8%. Target: {_target_fmt}"
 
     _input_kwargs = dict(
