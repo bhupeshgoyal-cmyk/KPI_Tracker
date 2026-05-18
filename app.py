@@ -173,9 +173,11 @@ with st.sidebar:
     st.markdown(f"### {user['name']}")
     st.caption(user["email"])
     
-    # Show role badge if user is admin
+    # Show role badge if user is admin / view-only
     if user.get("is_admin", False):
         st.markdown("✅ **Admin**")
+    elif user.get("is_view_only", False):
+        st.markdown("👁️ **View Only**")
     
     # Department selector
     user_departments = user.get("departments", [user.get("department", "Unknown")])
@@ -525,8 +527,14 @@ def _render_kpi_table(section_df: pd.DataFrame) -> None:
     st.dataframe(styled, use_container_width=True, hide_index=True)
 
 
-# Filters
-fc1, fc2, fc3, fc4 = st.columns(4)
+# Filters — owner filter only shown to admins
+owner_filter = "All"
+show_owner_filter = user.get("is_admin", False) and config.KPI_COL_OWNER in enriched.columns
+
+if show_owner_filter:
+    fc1, fc2, fc3, fc4 = st.columns(4)
+else:
+    fc1, fc2, fc4 = st.columns(3)
 
 with fc1:
     type_filter = st.selectbox(
@@ -542,19 +550,17 @@ with fc2:
         index=0,
     )
 
-with fc3:
-    if config.KPI_COL_OWNER in enriched.columns:
+if show_owner_filter:
+    with fc3:
         owners = sorted(
             o for o in enriched[config.KPI_COL_OWNER].astype(str).str.strip().unique()
             if o and o.lower() != "nan"
         )
-    else:
-        owners = []
-    owner_filter = st.selectbox(
-        "Owner",
-        options=["All"] + owners,
-        index=0,
-    )
+        owner_filter = st.selectbox(
+            "Owner",
+            options=["All"] + owners,
+            index=0,
+        )
 
 with fc4:
     rag_filter = st.selectbox(
@@ -593,114 +599,115 @@ else:
 st.divider()
 
 # =============================================================================
-# Input Form
+# Input Form (hidden entirely for view-only users)
 # =============================================================================
-st.markdown("<h2 style='color: #1A73E8; margin-bottom: 1rem;'>📝 Submit Actual</h2>", unsafe_allow_html=True)
+if not user.get("is_view_only", False):
+    st.markdown("<h2 style='color: #1A73E8; margin-bottom: 1rem;'>📝 Submit Actual</h2>", unsafe_allow_html=True)
 
-kpi_options = {
-    f"{r[config.KPI_COL_NAME]} ({r[config.KPI_COL_CODE]})": r[config.KPI_COL_CODE]
-    for _, r in kpis_df.iterrows()
-}
-selected_label = st.selectbox("Select KPI", options=list(kpi_options.keys()))
-selected_code  = kpi_options[selected_label]
+    kpi_options = {
+        f"{r[config.KPI_COL_NAME]} ({r[config.KPI_COL_CODE]})": r[config.KPI_COL_CODE]
+        for _, r in kpis_df.iterrows()
+    }
+    selected_label = st.selectbox("Select KPI", options=list(kpi_options.keys()))
+    selected_code  = kpi_options[selected_label]
 
-# Determine input format from the selected KPI's target
-_sel_kpi_row  = kpis_df[kpis_df[config.KPI_COL_CODE] == selected_code]
-_kpi_target   = _sel_kpi_row[config.KPI_COL_TARGET].iloc[0] if not _sel_kpi_row.empty else None
-_pct_flag_col = f"_{config.KPI_COL_TARGET}_is_pct"
-_kpi_is_pct   = bool(_sel_kpi_row[_pct_flag_col].iloc[0]) if (not _sel_kpi_row.empty and _pct_flag_col in _sel_kpi_row.columns) else False
+    # Determine input format from the selected KPI's target
+    _sel_kpi_row  = kpis_df[kpis_df[config.KPI_COL_CODE] == selected_code]
+    _kpi_target   = _sel_kpi_row[config.KPI_COL_TARGET].iloc[0] if not _sel_kpi_row.empty else None
+    _pct_flag_col = f"_{config.KPI_COL_TARGET}_is_pct"
+    _kpi_is_pct   = bool(_sel_kpi_row[_pct_flag_col].iloc[0]) if (not _sel_kpi_row.empty and _pct_flag_col in _sel_kpi_row.columns) else False
 
-_convert_pct = False   # whether to divide input by 100 before saving
-if _kpi_is_pct:
-    try:
-        _t = float(_kpi_target)
-        _pct_decimal = abs(_t) <= 1.0   # decimal form: target stored as 0-1 (e.g. 0.95 = 95%)
-    except (TypeError, ValueError):
-        _pct_decimal = False
-    # All percentage inputs are bounded to [-100, 100] — covers deltas / negatives
-    _actual_label  = "Actual value (%)"
-    _actual_step   = 0.1
-    _actual_format = "%.1f"
-    _actual_min    = -100.0
-    _actual_max    = 100.0
-    _convert_pct   = _pct_decimal   # decimal-form targets need /100 on save
-else:
-    _actual_label  = "Actual value"
-    _actual_step   = 0.01
-    _actual_format = "%.2f"
-    _actual_min    = None
-    _actual_max    = None
-
-# Show last submission for selected KPI
-kpi_history = (
-    actuals_df[actuals_df[config.ACTUAL_COL_KPI_CODE] == selected_code]
-    if not actuals_df.empty else pd.DataFrame()
-)
-
-if not kpi_history.empty:
-    last         = kpi_history.sort_values(config.ACTUAL_COL_DATE).iloc[-1]
-    last_date    = pd.to_datetime(last[config.ACTUAL_COL_DATE]).strftime("%d %b %Y")
-    last_comment = last[config.ACTUAL_COL_COMMENT] or "—"
-    with st.container(border=True):
-        st.caption(f"Last submission — {last_date}")
-        lc1, lc2 = st.columns(2)
-        # Format Previous Actual in the same unit as the target column
-        _v = last[config.ACTUAL_COL_ACTUAL]
-        if _kpi_is_pct:
-            prev_actual_display = f"{_v * 100:,.2f}%" if abs(_v) <= 1.0 else f"{_v:,.2f}%"
-        else:
-            prev_actual_display = f"{_v:,.2f}"
-        lc1.metric("Previous Actual", prev_actual_display)
-        lc2.markdown(f"**Comment**\n\n{last_comment}")
-else:
-    st.info("No previous submission for this KPI this month.")
-
-with st.form("actuals_form", clear_on_submit=True):
-    # Build help text with instructions
-    _help_text = None
+    _convert_pct = False   # whether to divide input by 100 before saving
     if _kpi_is_pct:
-        _target_fmt = f"{_kpi_target:,.2f}%" if _kpi_target is not None else "—"
-        _help_text = f"Enter the value as a percentage. Example: 94 for 94%, or -6.8 for -6.8%. Target: {_target_fmt}"
+        try:
+            _t = float(_kpi_target)
+            _pct_decimal = abs(_t) <= 1.0   # decimal form: target stored as 0-1 (e.g. 0.95 = 95%)
+        except (TypeError, ValueError):
+            _pct_decimal = False
+        # All percentage inputs are bounded to [-100, 100] — covers deltas / negatives
+        _actual_label  = "Actual value (%)"
+        _actual_step   = 0.1
+        _actual_format = "%.1f"
+        _actual_min    = -100.0
+        _actual_max    = 100.0
+        _convert_pct   = _pct_decimal   # decimal-form targets need /100 on save
+    else:
+        _actual_label  = "Actual value"
+        _actual_step   = 0.01
+        _actual_format = "%.2f"
+        _actual_min    = None
+        _actual_max    = None
 
-    _input_kwargs = dict(
-        label=_actual_label,
-        step=_actual_step,
-        format=_actual_format,
-        help=_help_text,
+    # Show last submission for selected KPI
+    kpi_history = (
+        actuals_df[actuals_df[config.ACTUAL_COL_KPI_CODE] == selected_code]
+        if not actuals_df.empty else pd.DataFrame()
     )
-    if _actual_min is not None:
-        _input_kwargs["min_value"] = _actual_min
-    if _actual_max is not None:
-        _input_kwargs["max_value"] = _actual_max
-    actual_value = st.number_input(**_input_kwargs)
-    comment      = st.text_area(
-        "Comment",
-        placeholder="Briefly explain the result — what drove it, any context…",
-        max_chars=500,
-    )
-    fc1, fc2 = st.columns(2)
-    fc1.text_input("Date",         value=date.today().strftime("%Y-%m-%d"), disabled=True)
-    fc2.text_input("Submitted by", value=user["email"],                     disabled=True)
-    submitted = st.form_submit_button("Submit", width="stretch", type="primary")
 
-if submitted:
-    try:
-        save_value = actual_value / 100.0 if _convert_pct else actual_value
-        append_actual(
-            date=date.today().strftime("%Y-%m-%d"),
-            kpi_code=selected_code,
-            actual=save_value,
-            comment=comment.strip(),
-            updated_by=user["email"],
-            month=selected_month,
+    if not kpi_history.empty:
+        last         = kpi_history.sort_values(config.ACTUAL_COL_DATE).iloc[-1]
+        last_date    = pd.to_datetime(last[config.ACTUAL_COL_DATE]).strftime("%d %b %Y")
+        last_comment = last[config.ACTUAL_COL_COMMENT] or "—"
+        with st.container(border=True):
+            st.caption(f"Last submission — {last_date}")
+            lc1, lc2 = st.columns(2)
+            # Format Previous Actual in the same unit as the target column
+            _v = last[config.ACTUAL_COL_ACTUAL]
+            if _kpi_is_pct:
+                prev_actual_display = f"{_v * 100:,.2f}%" if abs(_v) <= 1.0 else f"{_v:,.2f}%"
+            else:
+                prev_actual_display = f"{_v:,.2f}"
+            lc1.metric("Previous Actual", prev_actual_display)
+            lc2.markdown(f"**Comment**\n\n{last_comment}")
+    else:
+        st.info("No previous submission for this KPI this month.")
+
+    with st.form("actuals_form", clear_on_submit=True):
+        # Build help text with instructions
+        _help_text = None
+        if _kpi_is_pct:
+            _target_fmt = f"{_kpi_target:,.2f}%" if _kpi_target is not None else "—"
+            _help_text = f"Enter the value as a percentage. Example: 94 for 94%, or -6.8 for -6.8%. Target: {_target_fmt}"
+
+        _input_kwargs = dict(
+            label=_actual_label,
+            step=_actual_step,
+            format=_actual_format,
+            help=_help_text,
         )
-        display_value = f"{actual_value:,.2f}%" if _kpi_is_pct else f"{actual_value:,.2f}"
-        st.success(f"Saved! {selected_label} → {display_value} on {date.today().strftime('%d %b %Y')}")
-        st.rerun()
-    except Exception as e:
-        st.error(f"Failed to save: {e}")
+        if _actual_min is not None:
+            _input_kwargs["min_value"] = _actual_min
+        if _actual_max is not None:
+            _input_kwargs["max_value"] = _actual_max
+        actual_value = st.number_input(**_input_kwargs)
+        comment      = st.text_area(
+            "Comment",
+            placeholder="Briefly explain the result — what drove it, any context…",
+            max_chars=500,
+        )
+        fc1, fc2 = st.columns(2)
+        fc1.text_input("Date",         value=date.today().strftime("%Y-%m-%d"), disabled=True)
+        fc2.text_input("Submitted by", value=user["email"],                     disabled=True)
+        submitted = st.form_submit_button("Submit", width="stretch", type="primary")
 
-st.divider()
+    if submitted:
+        try:
+            save_value = actual_value / 100.0 if _convert_pct else actual_value
+            append_actual(
+                date=date.today().strftime("%Y-%m-%d"),
+                kpi_code=selected_code,
+                actual=save_value,
+                comment=comment.strip(),
+                updated_by=user["email"],
+                month=selected_month,
+            )
+            display_value = f"{actual_value:,.2f}%" if _kpi_is_pct else f"{actual_value:,.2f}"
+            st.success(f"Saved! {selected_label} → {display_value} on {date.today().strftime('%d %b %Y')}")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Failed to save: {e}")
+
+    st.divider()
 
 # =============================================================================
 # Latest Comments
@@ -735,28 +742,29 @@ else:
             st.divider()
 
 # =============================================================================
-# AI Insights
+# AI Insights (hidden entirely for view-only users)
 # =============================================================================
-st.markdown("<h2 style='color: #1A73E8; margin-bottom: 1rem;'>🧠 Performance Summary</h2>", unsafe_allow_html=True)
+if not user.get("is_view_only", False):
+    st.markdown("<h2 style='color: #1A73E8; margin-bottom: 1rem;'>🧠 Performance Summary</h2>", unsafe_allow_html=True)
 
-_insight_used  = get_weekly_insight_count(department)
-_insight_left  = max(0, config.INSIGHTS_WEEKLY_CAP - _insight_used)
+    _insight_used  = get_weekly_insight_count(department)
+    _insight_left  = max(0, config.INSIGHTS_WEEKLY_CAP - _insight_used)
 
-if _insight_left > 0:
-    st.caption(f"✨ {_insight_left} of {config.INSIGHTS_WEEKLY_CAP} insights remaining this week")
-    if st.button("Generate Insight", type="primary"):
-        with st.spinner("Crunching the numbers… 🔍"):
-            st.session_state["insight"] = generate_insights(department, enriched)
-            log_insight_usage(department, user["email"])
-            st.rerun()
-else:
-    st.info(
-        "🎯 You've used both insights for this week — great engagement! "
-        "Your next insights unlock on Monday. "
-        "In the meantime, keep submitting actuals and comments for a richer briefing next time. 💪"
-    )
+    if _insight_left > 0:
+        st.caption(f"✨ {_insight_left} of {config.INSIGHTS_WEEKLY_CAP} insights remaining this week")
+        if st.button("Generate Insight", type="primary"):
+            with st.spinner("Crunching the numbers… 🔍"):
+                st.session_state["insight"] = generate_insights(department, enriched)
+                log_insight_usage(department, user["email"])
+                st.rerun()
+    else:
+        st.info(
+            "🎯 You've used both insights for this week — great engagement! "
+            "Your next insights unlock on Monday. "
+            "In the meantime, keep submitting actuals and comments for a richer briefing next time. 💪"
+        )
 
-if "insight" in st.session_state:
+if not user.get("is_view_only", False) and "insight" in st.session_state:
     _render_insight(st.session_state["insight"])
     if st.button("Clear", key="clear_insight"):
         del st.session_state["insight"]
