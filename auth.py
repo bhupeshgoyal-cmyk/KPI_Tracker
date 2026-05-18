@@ -64,15 +64,18 @@ def _build_user_lookup():
                 # Split by comma if multiple departments, otherwise single department
                 dept_list = [d.strip() for d in dept_str.split(",") if d.strip()]
             
-            # Check if user is admin
-            is_admin = role.strip().lower() in ["admin", "administrator"]
-            
+            # Check if user is admin / view-only
+            role_norm = role.strip().lower()
+            is_admin = role_norm in ["admin", "administrator"]
+            is_view_only = role_norm == "view"
+
             normalized_users.append({
                 "email": str(email).strip(),
                 "name": str(name).strip() if name else "Unknown",
                 "departments": dept_list if dept_list else ["Unknown"],  # Store as list
                 "role": role.strip(),
                 "is_admin": is_admin,
+                "is_view_only": is_view_only,
                 "password": str(password).strip()  # Store password
             })
     
@@ -149,12 +152,13 @@ def show_login() -> None:
         return
 
     st.session_state.user = {
-        "email":       user["email"],
-        "name":        user["name"],
-        "departments": user["departments"],  # Store as list
-        "department":  user["departments"][0] if user["departments"] else "Unknown",  # Default to first
-        "is_admin":    user.get("is_admin", False),  # Store admin status
-        "role":        user.get("role", "User"),
+        "email":         user["email"],
+        "name":          user["name"],
+        "departments":   user["departments"],  # Store as list
+        "department":    user["departments"][0] if user["departments"] else "Unknown",  # Default to first
+        "is_admin":      user.get("is_admin", False),  # Store admin status
+        "is_view_only":  user.get("is_view_only", False),  # Read-only access flag
+        "role":          user.get("role", "User"),
     }
     st.rerun()
 
